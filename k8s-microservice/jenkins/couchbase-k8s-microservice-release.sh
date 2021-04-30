@@ -21,6 +21,12 @@ fi
 # Publish images with this public tag, and a REBUILD number of 1.
 ${script_dir}/util/publish-k8s-images.sh ${PRODUCT} ${VERSION}-${BLD_NUM} ${public_tag} 1 ${LATEST}
 
+# Tag release on github - only applicable to fluent-bit currently
+if [ "${PRODUCT}" = "couchbase-fluent-bit" ]
+then
+    tag_release "${PRODUCT}" "${VERSION}"
+fi
+
 ################### ARTIFACTS
 
 # Upload artifacts to S3
@@ -42,3 +48,9 @@ for file in /latestbuilds/${PRODUCT}/${VERSION}/${BLD_NUM}/*${BLD_NUM}*; do
     aws s3 cp --content-type "text/plain" ${filename}.sha256 \
       s3://packages.couchbase.com/${PRODUCT}/${public_tag}/${filename}.sha256 --acl public-read
 done
+
+if [ "${ERRORS}" != "" ]
+then
+    printf "${ERRORS}"
+    exit 1
+fi
