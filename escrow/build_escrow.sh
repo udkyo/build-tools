@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-
+set -x
 source ./escrow_config || exit 1
 
 # Top-level directory; everything to escrow goes in here.
@@ -32,21 +32,24 @@ fi
 get_cbdep_git() {
   local dep=$1
 
-  cd "${ESCROW}/deps"
-  if [ ! -d "${dep}" ]
+  if ! printf '%s\n' "${CACHED_DEPS[@]}" | grep -E "^$dep\$"
   then
-    heading "Downloading cbdep ${dep} ..."
-    # This special approach ensures all remote branches are brought
-    # down as well, which ensures in-container-build.sh can also check
-    # them out. See https://stackoverflow.com/a/37346281/1425601 .
-    mkdir "${dep}"
-    cd "${dep}"
-    if [ ! -d .git ]
+    cd "${ESCROW}/deps"
+    if [ ! -d "${dep}" ]
     then
-      git clone --bare "git://github.com/couchbasedeps/${dep}.git" .git
+      heading "Downloading cbdep ${dep} ..."
+      # This special approach ensures all remote branches are brought
+      # down as well, which ensures in-container-build.sh can also check
+      # them out. See https://stackoverflow.com/a/37346281/1425601 .
+      mkdir "${dep}"
+      cd "${dep}"
+      if [ ! -d .git ]
+      then
+        git clone --bare "git://github.com/couchbasedeps/${dep}.git" .git
+      fi
+      git config core.bare false
+      git checkout
     fi
-    git config core.bare false
-    git checkout
   fi
 }
 
@@ -117,12 +120,13 @@ cache_deps() {
 
   local cache=${ESCROW}/deps/.cbdepscache
   mkdir -p $cache || :
+  pushd $cache
 
   for platform in ${PLATFORMS}
   do
     echo "platform: ${platform}"
-    for dependency in ${CACHED_DEPS[@]}
-    do
+    # for dependency in ${CACHED_DEPS[@]}
+    # do
       if [ "${platform}" = "ubuntu18" ]
       then
         platform="ubuntu18.04"
@@ -133,16 +137,46 @@ cache_deps() {
       then
         platform="ubuntu20.04"
       fi
-      local version=$(awk "/$dependency .*${platform}/ {print \$4}" "${ESCROW}/src/tlm/deps/manifest.cmake") && (
-        cd $cache
-        if [ ! -f "./$dependency-${platform}-x86_64-${version}.md5" -a "${version}" != "" ]
-        then
-          curl -fO "https://packages.couchbase.com/couchbase-server/deps/$dependency/${version}/$dependency-${platform}-x86_64-${version}.{md5,tgz}" \
+      urls=$(awk "/^DECLARE_DEP.*$platform/ {
+        if(\$4 ~ /VERSION/) {
+          url = \"https://packages.couchbase.com/couchbase-server/deps/\" substr(\$2,2) \"/\" \$5 \"/\" \$7 \"/\" substr(\$2,2) \"-${platform}-x86_64-\" \$5 \"-\" \$7;
+          print url \".md5\";
+          print url \".tgz\";
+        } else {
+          url = \"https://packages.couchbase.com/couchbase-server/deps/\" substr(\$2,2) \"/\" \$4 \"/\" substr(\$2,2) \"-${platform}-x86_64-\" \$4;
+          print url \".md5\";
+          print url \".tgz\";
+        }
+      }" "${ESCROW}/src/tlm/deps/manifest.cmake")
+      for url in $urls
+      do
+        if [ ! -f "$(basename $url)" ]; then
+          echo "Fetching $url"
+          curl -fO "$url" \
             || fatal "Package download failed"
+        else
+          echo "$(basename $url) already present"
         fi
-      )
-    done
+      done
+          #  \"/\$5/substr(\$2,2)-${platform}-x86_64-\$5\"
+          #  \"/\$4/substr(\$2,2)-${platform}-x86_64-\$4\"
+      # if $(grep "\($dependency V2" "${ESCROW}/src/tlm/deps/manifest.cmake"
+      # then
+      #   local version_field=5
+      # else
+      #   local version_field=4
+      # fi
+      # local version=$(awk "/\($dependency .*${platform}/ {print \$${version_field}}" "${ESCROW}/src/tlm/deps/manifest.cmake") && (
+      #   cd $cache
+      #   if [ ! -f "./$dependency-${platform}-x86_64-${version}.md5" -a "${version}" != "" ]
+      #   then
+      #     curl -fO "https://packages.couchbase.com/couchbase-server/deps/$dependency/${version}/$dependency-${platform}-x86_64-${version}.{md5,tgz}" \
+      #       || fatal "Package download failed"
+      #   fi
+      # )
+    # done
   done
+  popd
 }
 
 cache_openjdk() {
@@ -194,36 +228,36 @@ copy_cbdepcache() {
   if [ "${OS}" = "linux" ]; then cp -rp ~/.cbdepcache/* ${ESCROW}/deps/.cbdepcache; fi
 }
 
-sort_manifests() {
-  echo "# Patch: Sort manifests: ${dep_manifest} ${dep_v2_manifest}"
-  # sort -u to remove redundant cbdeps
-  if [ -e ${dep_manifest} ];
-  then
-    sort -u < "${dep_manifest}" > dep_manifest.tmp
-    mv dep_manifest.tmp "${dep_manifest}"
-    set +e
-    ### Ensure openssl build first, then rocksdb and folly built last (v1)
-    grep -E "^openssl" "${dep_manifest}" > "${ESCROW}/deps/dep2.txt"
-    grep -Ev "^rocksdb|^folly|^openssl|^v8" "${dep_manifest}" >> "${ESCROW}/deps/dep2.txt"
-    grep -E "^rocksdb|^folly" "${dep_manifest}" >> "${ESCROW}/deps/dep2.txt"
-    mv "${ESCROW}/deps/dep2.txt" "${dep_manifest}"
-    echo "dep_manifest=${dep_manifest}"
-    set -e
-  fi
-  if [ -e ${dep_v2_manifest} ];
-  then
-    sort -u < "${dep_v2_manifest}" > dep_v2_manifest.tmp
-    mv dep_v2_manifest.tmp "${dep_v2_manifest}"
-    set +e
-    ### Ensure openssl build first, then rocksdb and folly built last (v2)
-    grep -E "^openssl" "${dep_v2_manifest}" > "${ESCROW}/deps/dep2.txt"
-    grep -Ev "^rocksdb|^folly|^openssl|^v8" "${dep_v2_manifest}" >> "${ESCROW}/deps/dep2.txt"
-    grep -E "^rocksdb|^folly" "${dep_v2_manifest}" >> "${ESCROW}/deps/dep2.txt"
-    mv "${ESCROW}/deps/dep2.txt" "${dep_v2_manifest}"
-    echo "dep_v2_manifest=${dep_v2_manifest}"
-    set -e
-  fi
-}
+# sort_manifests() {
+#   echo "# Patch: Sort manifests: ${dep_manifest} ${dep_v2_manifest}"
+#   # sort -u to remove redundant cbdeps
+#   if [ -e ${dep_manifest} ];
+#   then
+#     sort -u < "${dep_manifest}" > dep_manifest.tmp
+#     mv dep_manifest.tmp "${dep_manifest}"
+#     set +e
+#     ### Ensure openssl build first, then rocksdb and folly built last (v1)
+#     grep -E "^openssl" "${dep_manifest}" > "${ESCROW}/deps/dep2.txt"
+#     grep -Ev "^rocksdb|^folly|^openssl|^v8" "${dep_manifest}" >> "${ESCROW}/deps/dep2.txt"
+#     grep -E "^rocksdb|^folly" "${dep_manifest}" >> "${ESCROW}/deps/dep2.txt"
+#     mv "${ESCROW}/deps/dep2.txt" "${dep_manifest}"
+#     echo "dep_manifest=${dep_manifest}"
+#     set -e
+#   fi
+#   if [ -e ${dep_v2_manifest} ];
+#   then
+#     sort -u < "${dep_v2_manifest}" > dep_v2_manifest.tmp
+#     mv dep_v2_manifest.tmp "${dep_v2_manifest}"
+#     set +e
+#     ### Ensure openssl build first, then rocksdb and folly built last (v2)
+#     grep -E "^openssl" "${dep_v2_manifest}" > "${ESCROW}/deps/dep2.txt"
+#     grep -Ev "^rocksdb|^folly|^openssl|^v8" "${dep_v2_manifest}" >> "${ESCROW}/deps/dep2.txt"
+#     grep -E "^rocksdb|^folly" "${dep_v2_manifest}" >> "${ESCROW}/deps/dep2.txt"
+#     mv "${ESCROW}/deps/dep2.txt" "${dep_v2_manifest}"
+#     echo "dep_v2_manifest=${dep_v2_manifest}"
+#     set -e
+#   fi
+# }
 
 get_cbdeps_versions() {
   # Interrogate CBDownloadDeps and curl_unix.sh style build scripts to generate a deduplicated array
@@ -325,60 +359,63 @@ git config --global color.ui false
 repo init -u git://github.com/couchbase/manifest -g all -m "${MANIFEST_FILE}"
 repo sync --jobs=6
 
-# Ensure we have git history for 'master' branch of tlm, so we can
-# switch to the right cbdeps build steps
-( cd tlm && git fetch couchbase refs/heads/master )
+# # Ensure we have git history for 'master' branch of tlm, so we can
+# # switch to the right cbdeps build steps
+# ( cd tlm && git fetch couchbase refs/heads/master )
 
-# Download all cbdeps source code
-mkdir -p "${ESCROW}/deps"
-# Determine set of cbdeps used by this build, per platform.
-for platform in ${PLATFORMS}
-do
-  platform=$(echo ${platform} | sed 's/-.*//')
-  add_packs=$(
-    grep "${platform}" "${ESCROW}/src/tlm/deps/packages/folly/CMakeLists.txt" | grep -v V2 \
-    | awk '{sub(/\(/, "", $2); print $2 ":" $4}';
-    grep "${platform}" "${ESCROW}/src/tlm/deps/manifest.cmake" | grep -v V2 \
-    | awk '{sub(/\(/, "", $2); print $2 ":" $4}'
-  )
-  add_packs_v2=$(
-    grep "${platform}" "${ESCROW}/src/tlm/deps/packages/folly/CMakeLists.txt" | grep V2 \
-    | awk '{sub(/\(/, "", $2); print $2 ":" $5 "-" $7}';
-    grep "${platform}" "${ESCROW}/src/tlm/deps/manifest.cmake" | grep V2 \
-    | awk '{sub(/\(/, "", $2); print $2 ":" $5 "-" $7}'
-  )
+# # Download all cbdeps source code
+# mkdir -p "${ESCROW}/deps"
+# # Determine set of cbdeps used by this build, per platform.
+# for platform in ${PLATFORMS}
+# do
+#   platform=$(echo ${platform} | sed 's/-.*//')
+#   add_packs=$(
+#     grep "${platform}" "${ESCROW}/src/tlm/deps/packages/folly/CMakeLists.txt" | grep -v V2 \
+#     | awk '{sub(/\(/, "", $2); print $2 ":" $4}';
+#     grep "${platform}" "${ESCROW}/src/tlm/deps/manifest.cmake" | grep -v V2 \
+#     | awk '{sub(/\(/, "", $2); print $2 ":" $4}'
+#   )
+#   add_packs_v2=$(
+#     grep "${platform}" "${ESCROW}/src/tlm/deps/packages/folly/CMakeLists.txt" | grep V2 \
+#     | awk '{sub(/\(/, "", $2); print $2 ":" $5 "-" $7}';
+#     grep "${platform}" "${ESCROW}/src/tlm/deps/manifest.cmake" | grep V2 \
+#     | awk '{sub(/\(/, "", $2); print $2 ":" $5 "-" $7}'
+#   )
 
-  # Download and keep a record of all third-party deps
-  dep_manifest=${ESCROW}/deps/dep_manifest_${platform}.txt
-  dep_v2_manifest=${ESCROW}/deps/dep_v2_manifest_${platform}.txt
+#   # Download and keep a record of all third-party deps
+#   dep_manifest=${ESCROW}/deps/dep_manifest_${platform}.txt
+#   dep_v2_manifest=${ESCROW}/deps/dep_v2_manifest_${platform}.txt
 
-  rm -f "${dep_manifest}" "${dep_v2_manifest}"
-  echo "${add_packs_v2}" > "${dep_v2_manifest}"
+#   rm -f "${dep_manifest}" "${dep_v2_manifest}"
+#   echo "${add_packs_v2}" > "${dep_v2_manifest}"
 
-  # Get cbdeps V2 source first
-  get_build_manifests_repo
+#   # Get cbdeps V2 source first
+#   get_build_manifests_repo
 
-  for add_pack in ${add_packs_v2}
-  do
-    dep=$(echo ${add_pack//:/ } | awk '{print $1}') # zlib
-    ver=$(echo ${add_pack//:/ } | awk '{print $2}' | sed 's/-/ /' | awk '{print $1}') # 1.2.11
-    bldnum=$(echo ${add_pack//: } | awk '{print $2}' | sed 's/-/ /' | awk '{print $2}')
-    pushd "${ESCROW}/build-manifests/cbdeps" > /dev/null
-    sha=$(git log --pretty=oneline "${dep}/${ver}/${ver}.xml" | grep "${ver}-${bldnum}" | awk '{print $1}')
-    get_cbdeps2_src ${dep} ${ver} ${dep}/${ver}/${ver}.xml ${sha}
-  done
+#   for add_pack in ${add_packs_v2}
+#   do
+#     dep=$(echo ${add_pack//:/ } | awk '{print $1}') # zlib
+#     ver=$(echo ${add_pack//:/ } | awk '{print $2}' | sed 's/-/ /' | awk '{print $1}') # 1.2.11
+#     bldnum=$(echo ${add_pack//: } | awk '{print $2}' | sed 's/-/ /' | awk '{print $2}')
+#     pushd "${ESCROW}/build-manifests/cbdeps" > /dev/null
+#     sha=$(git log --pretty=oneline "${dep}/${ver}/${ver}.xml" | grep "${ver}-${bldnum}" | awk '{print $1}')
 
-  # Get cbdep after V2 source
-  for add_pack in ${add_packs}
-  do
-    download_cbdep ${add_pack//:/ } "${dep_manifest}"
-  done
+#     get_cbdeps2_src ${dep} ${ver} ${dep}/${ver}/${ver}.xml ${sha}
+#   done
 
-  sort_manifests
-done
+#   # Get cbdep after V2 source
+#   for add_pack in ${add_packs}
+#   do
+#     download_cbdep ${add_pack//:/ } "${dep_manifest}"
+#   done
 
-# Need this tool for v8 build
-get_cbdep_git depot_tools
+#   sort_manifests
+# done
+
+# # Need this tool for v8 build
+# get_cbdep_git depot_tools
+
+get_build_manifests_repo
 
 CBDEPS_VERSIONS="$(get_cbdeps_versions "${ESCROW}")"
 
@@ -394,17 +431,17 @@ done
 
 cbdep_ver_latest=$(echo ${CBDEPS_VERSIONS} | tr ' ' '\n' | tail -1)
 
-# If running on a mac, we'll need to get the mac version of cbdep for things we need to cache here
-if [ "${OS}" = "darwin" ]
-then
-  heading "Pulling latest macos cbdep"
+# # If running on a mac, we'll need to get the mac version of cbdep for things we need to cache here
+# if [ "${OS}" = "darwin" ]
+# then
+#   heading "Pulling latest macos cbdep"
 
-  [ ! -f "${ESCROW}/deps/cbdep-${cbdep_ver_latest}-${OS}" ] && \
-     curl --fail -o "${ESCROW}/deps/cbdep-${cbdep_ver_latest}-${OS}" "https://packages.couchbase.com/cbdep/${cbdep_ver_latest}/cbdep-${cbdep_ver_latest}-${OS}"
-  chmod +x "${ESCROW}/deps/cbdep-${cbdep_ver_latest}-${OS}"
-fi
+#   [ ! -f "${ESCROW}/deps/cbdep-${cbdep_ver_latest}-${OS}" ] && \
+#      curl --fail -o "${ESCROW}/deps/cbdep-${cbdep_ver_latest}-${OS}" "https://packages.couchbase.com/cbdep/${cbdep_ver_latest}/cbdep-${cbdep_ver_latest}-${OS}"
+#   chmod +x "${ESCROW}/deps/cbdep-${cbdep_ver_latest}-${OS}"
+# fi
 
-mkdir -p ${ESCROW}/deps/.cbdepcache
+# mkdir -p ${ESCROW}/deps/.cbdepcache
 
 # Walk makelists to get go versions in use
 GOVERS="$(echo $(find "${ESCROW}" -name CMakeLists.txt | xargs cat | awk '/GOVERSION [0-9]/ {print $2}' | grep -Eo "[0-9\.]+") | tr ' ' '\n' | sort -u | tr '\n' ' ') $EXTRA_GOLANG_VERSIONS"

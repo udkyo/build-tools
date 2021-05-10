@@ -92,11 +92,12 @@ docker exec ${DOCKER_EXEC_OPTION} ${SLAVENAME} mkdir -p ${container_workdir}/esc
 heading "Copying escrowed sources and dependencies into container"
 docker exec ${SLAVENAME} bash -c "cp /escrow/deps/rsync /usr/bin/rsync && chmod +x /usr/bin/rsync"
 docker exec ${DOCKER_EXEC_OPTION} ${SLAVENAME} mkdir -p ${container_workdir}/escrow
-docker exec ${DOCKER_EXEC_OPTION} ${SLAVENAME} rm -f /escrow/src/godeps/src/github.com/google/flatbuffers/docs/source/CONTRIBUTING.md
+# docker exec ${DOCKER_EXEC_OPTION} ${SLAVENAME} rm -f /escrow/src/godeps/src/github.com/google/flatbuffers/docs/source/CONTRIBUTING.md
 docker exec ${DOCKER_EXEC_OPTION} ${SLAVENAME} rsync --update -Laz /escrow/patches.sh \
   /escrow/in-container-build.sh \
   /escrow/escrow_config \
-  /escrow/deps /escrow/golang \
+  /escrow/deps \
+  /escrow/golang \
   /escrow/src ${container_workdir}/escrow
 docker exec ${SLAVENAME} chown -R couchbase:couchbase ${container_workdir}/escrow/patches.sh ${container_workdir}/escrow/deps ${container_workdir}/escrow/in-container-build.sh ${container_workdir}/escrow/escrow_config
 
