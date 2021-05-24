@@ -21,11 +21,8 @@ fi
 # Publish images with this public tag, and a REBUILD number of 1.
 ${script_dir}/util/publish-k8s-images.sh ${PRODUCT} ${VERSION}-${BLD_NUM} ${public_tag} 1 ${LATEST}
 
-# Tag release on github - only applicable to fluent-bit currently
-if [ "${PRODUCT}" = "couchbase-fluent-bit" ]
-then
-    tag_release "${PRODUCT}" "${VERSION}"
-fi
+# Tag release
+tag_release "${PRODUCT}" "${public_tag}"
 
 ################### ARTIFACTS
 

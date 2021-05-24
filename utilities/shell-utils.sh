@@ -39,8 +39,9 @@ function tag_release {
         then
             error "Tag ${VERSION} already exists, please investigate ($(git rev-parse -n1 ${VERSION}))"
         else
-            git tag "${VERSION}" "${COMMIT}"
-            git push origin "${VERSION}"
+            git remote add gerrit "ssh://review.couchbase.org:29418/${PRODUCT}.git"
+            git tag -a "${VERSION}" "${COMMIT}" -m "Version ${VERSION}"
+            git push gerrit ${VERSION}
         fi
     fi
     popd
