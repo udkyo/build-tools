@@ -26,33 +26,40 @@ function tag_release {
     local VERSION=$2
     local BLD_NUM=$3
 
-    mkdir manifest
-    pushd manifest
     curl --fail -LO http://latestbuilds.service.couchbase.com/builds/latestbuilds/${PRODUCT}/${VERSION}/${BLD_NUM}/${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml
-    git init
-    git add ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml
-    git commit -am "Add manifest"
-    popd
 
-    repo init -u ./manifest -m ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml
-    repo sync -j8
+    REVISION=$(xmllint --xpath "string(//project[@name=\"${PRODUCT}\"]/@revision)" ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml)
+    DEST_BRANCH=$(xmllint --xpath "string(//project[@name=\"${PRODUCT}\"]/@dest-branch)" ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml)
+    DEFAULT_REMOTE=$(xmllint --xpath "string(//default/@remote)" ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml)
+    PROJECT_REMOTE=$(xmllint --xpath "string(//project[@name=\"${PRODUCT}\"]/@remote)" ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml)
 
-    COMMIT=$(xmllint --xpath "string(//project[@name=\"${PRODUCT}\"]/@revision)" manifest/${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml)
+    if [ "${PROJECT_REMOTE}" != "" ]
+    then
+        FETCH=$(xmllint --xpath "string(//remote[@name=\"${PROJECT_REMOTE}\"]/@fetch)" ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml)
+        GERRIT_HOST=$(xmllint --xpath "string(//remote[@name=\"${PROJECT_REMOTE}\"]/@review)" ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml)
+    else
+        FETCH=$(xmllint --xpath "string(//remote[@name=\"${DEFAULT_REMOTE}\"]/@fetch)" ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml)
+        GERRIT_HOST=$(xmllint --xpath "string(//remote[@name=\"${DEFAULT_REMOTE}\"]/@review)" ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml)
+    fi
+
+    git clone "${FETCH}${PRODUCT}"
 
     pushd "${PRODUCT}"
-    if [ "${COMMIT}" = "" ]
+    git checkout "${DEST_BRANCH}"
+
+    if [ "${REVISION}" = "" ]
     then
         error "Got empty revision from manifest, couldn't tag release"
-    elif ! test $(git cat-file -t ${COMMIT}) == commit
+    elif ! test $(git cat-file -t ${REVISION}) == commit
     then
-        error "Expected to find a commit, found a $(git cat-file -t ${COMMIT}) instead"
+        error "Expected to find a commit, found a $(git cat-file -t ${REVISION}) instead"
     else
         if git tag | grep "${VERSION}" &>/dev/null
         then
             error "Tag ${VERSION} already exists, please investigate ($(git rev-parse -n1 ${VERSION}))"
         else
-            git remote add gerrit "ssh://review.couchbase.org:29418/${PRODUCT}.git"
-            git tag -a "${VERSION}" "${COMMIT}" -m "Version ${VERSION}"
+            git remote add gerrit "ssh://${GERRIT_HOST}:29418/${PRODUCT}.git"
+            git tag -a "${VERSION}" "${REVISION}" -m "Version ${VERSION}"
             git push gerrit ${VERSION}
         fi
     fi
