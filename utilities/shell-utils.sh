@@ -26,8 +26,18 @@ function tag_release {
     local VERSION=$2
     local BLD_NUM=$3
 
+    mkdir manifest
+    pushd manifest
     curl --fail -LO http://latestbuilds.service.couchbase.com/builds/latestbuilds/${PRODUCT}/${VERSION}/${BLD_NUM}/${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml
-    COMMIT=$(xmllint --xpath "string(//project[@name=\"${PRODUCT}\"]/@revision)" ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml)
+    git init
+    git add ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml
+    git commit -am "Add manifest"
+    popd
+
+    repo init -u ./manifest -m ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml
+    repo sync -j8
+
+    COMMIT=$(xmllint --xpath "string(//project[@name=\"${PRODUCT}\"]/@revision)" manifest/${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml)
 
     pushd "${PRODUCT}"
     if [ "${COMMIT}" = "" ]
