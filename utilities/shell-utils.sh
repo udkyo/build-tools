@@ -42,7 +42,7 @@ function tag_release {
         GERRIT_HOST=$(xmllint --xpath "string(//remote[@name=\"${DEFAULT_REMOTE}\"]/@review)" ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml)
     fi
 
-    git clone "${FETCH}${PRODUCT}"
+    git clone "ssh://${GERRIT_HOST}:29418/${PRODUCT}.git"
 
     pushd "${PRODUCT}"
     git checkout "${DEST_BRANCH}"
@@ -58,9 +58,8 @@ function tag_release {
         then
             error "Tag ${VERSION} already exists, please investigate ($(git rev-parse -n1 ${VERSION}))"
         else
-            git remote add gerrit "ssh://${GERRIT_HOST}:29418/${PRODUCT}.git"
             git tag -a "${VERSION}" "${REVISION}" -m "Version ${VERSION}"
-            git push gerrit ${VERSION}
+            git push "ssh://${GERRIT_HOST}:29418/${PRODUCT}.git" ${VERSION}
         fi
     fi
     popd
