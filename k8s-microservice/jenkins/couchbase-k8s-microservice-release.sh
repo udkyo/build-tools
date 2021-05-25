@@ -22,7 +22,7 @@ fi
 ${script_dir}/util/publish-k8s-images.sh ${PRODUCT} ${VERSION}-${BLD_NUM} ${public_tag} 1 ${LATEST}
 
 # Tag release
-tag_release "${PRODUCT}" "${public_tag}"
+tag_release "${PRODUCT}" "${public_tag}" "${BLD_NUM}"
 
 ################### ARTIFACTS
 

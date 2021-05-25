@@ -18,14 +18,16 @@ function error {
 }
 
 function tag_release {
-    if [ ${#} -ne 2 ]
+    if [ ${#} -ne 3 ]
     then
-        error "expected [product] [version], got ${@}"
+        error "expected [product] [version] [build_number], got ${@}"
     fi
     local PRODUCT=$1
     local VERSION=$2
+    local BLD_NUM=$3
 
-    COMMIT=$(xmllint --xpath "string(//project[@name=\"${PRODUCT}\"]/@revision)" manifest.xml)
+    curl --fail -Lo manifest.xml http://latestbuilds.service.couchbase.com/builds/latestbuilds/${PRODUCT}/${VERSION}/${BLD_NUM}/${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml
+    COMMIT=$(xmllint --xpath "string(//project[@name=\"${PRODUCT}\"]/@revision)" ${PRODUCT}-${VERSION}-${BLD_NUM}-manifest.xml)
 
     pushd "${PRODUCT}"
     if [ "${COMMIT}" = "" ]
