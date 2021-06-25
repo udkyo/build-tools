@@ -1,5 +1,6 @@
 #!/bin/bash
-set -ex
+set -e
+set -x
 source ./escrow_config || exit 1
 
 # Top-level directory; everything to escrow goes in here.
@@ -16,7 +17,6 @@ ROOT=$(pwd)
 popd
 
 ESCROW="${ROOT}/${PRODUCT}-${VERSION}"
-mkdir -p "${ESCROW}/deps"
 
 if [[ "$OSTYPE" == "darwin"* ]]
 then
@@ -43,15 +43,13 @@ cache_deps() {
   # to ${ESCROW}/deps/.cbdepscache
   echo "# Patch: Caching deps"
 
-  local cache=${ESCROW}/deps/.cbdepscache
+  local cache=${ESCROW}/.cbdepscache
   mkdir -p $cache || :
   pushd $cache
 
-  for platform in ${PLATFORMS}
+  for platform in ${DISTROS}
   do
     echo "platform: ${platform}"
-    # for dependency in ${CACHED_DEPS[@]}
-    # do
       if [ "${platform}" = "ubuntu18" ]
       then
         platform="ubuntu18.04"
@@ -106,12 +104,12 @@ cache_analytics() {
     analytics_version=$(echo $_v | sed 's/-.*//')
     analytics_build=$(echo $_v | sed 's/.*-//')
 
-    if [ ! -f "${ESCROW}/deps/.cbdepscache/analytics-jars-${analytics_version}-${analytics_build}.tar.gz" ]
+    if [ ! -f "${ESCROW}/.cbdepscache/analytics-jars-${analytics_version}-${analytics_build}.tar.gz" ]
     then
       (
         # .cbdepscache gets copied into the build container - this target is a
         # convenience to make sure the files are available later
-        cd ${ESCROW}/deps/.cbdepscache
+        cd ${ESCROW}/.cbdepscache
         curl --fail -LO https://packages.couchbase.com/releases/${analytics_version}/analytics-jars-${analytics_version}-${analytics_build}.tar.gz
       )
     fi
@@ -128,12 +126,89 @@ cache_openjdk() {
   echo "openjdk_versions: $openjdk_versions"
   for openjdk_version in $openjdk_versions
   do
-    "${ESCROW}/deps/cbdep-${cbdep_ver_latest}-${OS}" -p linux install -d ${ESCROW}/deps/.cbdepscache -n openjdk "${openjdk_version}" || fatal "OpenJDK install failed"
+    "${ESCROW}/deps/cbdep-${cbdep_ver_latest}-${OS}" -p linux install -d ${ESCROW}/.cbdepscache -n openjdk "${openjdk_version}" || fatal "OpenJDK install failed"
   done
 }
 
+get_cbdep_git() {
+  local dep=$1
+  local version=$2
+  local bldnum=$3
+
+  if [ ! -d "${ESCROW}/deps/src/${dep}-${version}-cb${bldnum}" -a "${dep}" != "cbpy" ]
+  then
+    depdir="${ESCROW}/deps/src/${dep}-${version}-cb${bldnum}"
+    mkdir -p "${depdir}"
+
+    heading "Downloading cbdep ${dep} ..."
+    # This special approach ensures all remote branches are brought
+    # down as well, which ensures in-container-build.sh can also check
+    # them out. See https://stackoverflow.com/a/37346281/1425601 .
+    pushd "${depdir}"
+    if [ ! -d .git ]
+    then
+      git clone --bare "git://github.com/couchbasedeps/${dep}.git" .git
+    fi
+    git config core.bare false
+    git checkout
+    popd
+  fi
+}
+
+get_cbdeps2_src() {
+  local dep=$1
+  local ver=$2
+  local manifest=$3
+  local sha=$4
+  local bldnum=$5
+
+  if [ ! -d "${ESCROW}/deps/src/${dep}-${ver}-cb${bldnum}" ]
+  then
+    mkdir -p "${ESCROW}/deps/src/${dep}-${ver}-cb${bldnum}"
+    pushd "${ESCROW}/deps/src/${dep}-${ver}-cb${bldnum}"
+    heading "Downloading cbdep2 ${manifest} at ${sha} ..."
+    repo init -u git://github.com/couchbase/build-manifests -g all -m "cbdeps/${manifest}" -b "${sha}"
+    repo sync --jobs=6
+    popd
+  fi
+}
+
+download_cbdep() {
+  local dep=$1
+  local ver=$2
+  local dep_manifest=$3
+  local platform=$4
+  heading "download_cbdep - $dep $ver $dep_manifest $platform"
+
+  # Split off the "version" and "build number"
+  version=$(echo "${ver}" | perl -nle '/^(.*?)(-cb.*)?$/ && print $1')
+  cbnum=$(echo "${ver}" | perl -nle '/-cb(.*)/ && print $1')
+
+  # skip openjdk-rt cbdeps build
+  if [[ ${dep} == 'openjdk-rt' ]]
+  then
+    :
+  else
+    get_cbdep_git "${dep}" "${version}" "${cbnum}"
+  fi
+
+  # Figure out the tlm SHA which builds this dep
+  tlmsha=$(
+    cd "${ESCROW}/src/tlm" &&
+    git grep -c "_ADD_DEP_PACKAGE(${dep} ${version} .* ${cbnum})" \
+      $(git rev-list --all -- deps/packages/CMakeLists.txt) \
+      -- deps/packages/CMakeLists.txt \
+    | awk -F: '{ print $1 }' | head -1
+  )
+  if [ -z "${tlmsha}" ]; then
+    echo "ERROR: couldn't find tlm SHA for ${dep} ${version} @${cbnum}@"
+    exit 1
+  fi
+  echo "${dep}:${tlmsha}:${ver}" >> "${dep_manifest}"
+}
+
 copy_cbdepcache() {
-  if [ "${OS}" = "linux" ]; then cp -rp ~/.cbdepcache/* ${ESCROW}/deps/.cbdepcache; fi
+  if [ "${OS}" = "linux" ]; then cp -rp ~/.cbdepcache/* ${ESCROW}/.cbdepcache; fi
 }
 
 copy_container_images() {
@@ -190,34 +265,13 @@ get_cbdeps_versions() {
 # Retrieve list of current Docker image/tags from stackfile
 stackfile=$(curl -L --fail https://raw.githubusercontent.com/couchbase/build-infra/master/docker-stacks/couchbase-server/server-jenkins-buildslaves.yml)
 
-# Retrieve list of platform - these correspond to the available Docker buildslave images for a given release.
-PLATFORMS=$(python3 - <<EOF
-import yaml
-
-stack = yaml.safe_load("""${stackfile}""")
-
-platforms = list()
-
-def get_labels(env):
-    for line in env:
-      if line.startswith('JENKINS_SLAVE_LABELS='):
-        return line.replace('JENKINS_SLAVE_LABELS=', '').split(' ')
-
-for name, service in stack['services'].items():
-    if '${RELEASE}' in get_labels(service['environment']):
-        distro = name.replace('-clang9','').replace('-${RELEASE}', '')
-        if distro not in ['suse11', 'suse12']:
-            platforms.append(distro)
-
-print(' '.join(platforms))
-EOF
-)
-
 IMAGES=$(python3 - <<EOF
 import yaml
 
 stack = yaml.safe_load("""${stackfile}""")
-distros = "${PLATFORMS}"
+distros = """
+${DISTROS}
+"""
 
 for distro in distros.split():
     print(stack['services'][distro]['image'])
@@ -233,6 +287,66 @@ git config --global user.email "build-team@couchbase.com"
 git config --global color.ui false
 repo init -u git://github.com/couchbase/manifest -g all -m "${MANIFEST_FILE}"
 repo sync --jobs=6
+
+
+# Ensure we have git history for 'master' branch of tlm, so we can
+# switch to the right cbdeps build steps
+( cd tlm && git fetch couchbase refs/heads/master )
+
+# Download all cbdeps source code
+mkdir -p "${ESCROW}/deps/src"
+echo "This directory contains third party dependency sources.
+
+Sources are included for reference, and are not compiled when building the escrow deposit." > "${ESCROW}/deps/src/README.md"
+
+# Determine set of cbdeps used by this build, per platform.
+for platform in ${DISTROS}
+do
+  platform=$(echo ${platform} | sed 's/-.*//')
+  add_packs=$(
+    grep "${platform}" "${ESCROW}/src/tlm/deps/packages/folly/CMakeLists.txt" | grep -v V2 \
+    | awk '{sub(/\(/, "", $2); print $2 ":" $4}';
+    grep "${platform}" "${ESCROW}/src/tlm/deps/manifest.cmake" | grep -v V2 \
+    | awk '{sub(/\(/, "", $2); print $2 ":" $4}'
+  )
+  add_packs_v2=$(
+    grep "${platform}" "${ESCROW}/src/tlm/deps/packages/folly/CMakeLists.txt" | grep V2 \
+    | awk '{sub(/\(/, "", $2); print $2 ":" $5 "-" $7}';
+    grep "${platform}" "${ESCROW}/src/tlm/deps/manifest.cmake" | grep V2 \
+    | awk '{sub(/\(/, "", $2); print $2 ":" $5 "-" $7}'
+  )
+
+  # Download and keep a record of all third-party deps
+  dep_manifest=${ESCROW}/deps/dep_manifest_${platform}.txt
+  dep_v2_manifest=${ESCROW}/deps/dep_v2_manifest_${platform}.txt
+
+  rm -f "${dep_manifest}" "${dep_v2_manifest}"
+  echo "${add_packs_v2}" > "${dep_v2_manifest}"
+
+  # Get cbdeps V2 source first
+  get_build_manifests_repo
+
+  for add_pack in ${add_packs_v2}
+  do
+    dep=$(echo ${add_pack//:/ } | awk '{print $1}')
+    ver=$(echo ${add_pack//:/ } | awk '{print $2}' | sed 's/-/ /' | awk '{print $1}')
+    bldnum=$(echo ${add_pack//:/ } | awk '{if ($2) { print $2 } else { print $1 }}' | sed 's/-/ /' | awk '{print $2}')
+    pushd "${ESCROW}/build-manifests/cbdeps" > /dev/null
+    sha=$(git log --pretty=oneline "${dep}/${ver}/${ver}.xml" | grep "${ver}-${bldnum}" | awk '{print $1}')
+    get_cbdeps2_src ${dep} ${ver} ${dep}/${ver}/${ver}.xml ${sha} ${bldnum}
+    popd
+  done
+
+  # Get cbdep after V2 source
+  for add_pack in ${add_packs}
+  do
+    download_cbdep ${add_pack//:/ } "${dep_manifest}" ${platform}
+  done
+done
+
+# Need this tool for v8 build
+get_cbdep_git depot_tools
+
 get_build_manifests_repo
 popd
 
@@ -266,8 +380,9 @@ done
 popd
 
 heading "Copying build scripts into escrow..."
+
 cp -a ./escrow_config templates/* patches.sh "${ESCROW}/"
-perl -pi -e "s/\@\@VERSION\@\@/${VERSION}/g; s/\@\@PLATFORMS\@\@/${PLATFORMS}/g; s/\@\@CBDEPS_VERSIONS\@\@/${CBDEPS_VERSIONS}/g;" \
+perl -pi -e "s/\@\@VERSION\@\@/${VERSION}/g; s/\@\@PLATFORMS\@\@/${DISTROS}/g; s/\@\@CBDEPS_VERSIONS\@\@/${CBDEPS_VERSIONS}/g;" \
   "${ESCROW}/README.md" "${ESCROW}/build-couchbase-server-from-escrow.sh" "${ESCROW}/patches.sh" "${ESCROW}/in-container-build.sh"
 
 cache_deps

@@ -6,3 +6,11 @@ PRODUCT=couchbase-server
 RELEASE=cheshire-cat
 MANIFEST_FILE=${PRODUCT}/${RELEASE}.xml
 
+DISTROS="amzn2
+centos7
+debian9
+debian10
+suse12
+suse15
+ubuntu18
+ubuntu20"

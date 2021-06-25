@@ -76,12 +76,8 @@ fi
 mkdir -p "${CACHE}"
 mkdir -p "${WORKDIR}/.cbdepcache"
 
-# Populating caches to working cache dir
-cp -rp /escrow/deps/.cbdepcache/* "${WORKDIR}/.cbdepcache"
-cp -rp /escrow/deps/.cbdepscache/* "${WORKDIR}/.cbdepscache"
-
 (
-  cd /escrow/deps/.cbdepscache/
+  cd /escrow/.cbdepscache/
   for package in analytics*
   do
     ver_build=$(echo $package | sed -e 's/analytics-jars-//' -e 's/\.tar\.gz//')
@@ -110,8 +106,6 @@ do
     cp -aL /escrow/deps/cbdep-${cbdep_ver}-${cbdeps_platform} "${CACHE}/cbdep/${cbdep_ver}/"
   fi
 done
-
-cp -rp /escrow/deps/.cbdepscache/* ${CACHE}
 
 patch_md5s
 
