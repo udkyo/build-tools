@@ -208,6 +208,7 @@ download_cbdep() {
 }
 
 copy_cbdepcache() {
+  mkdir -p ${ESCROW}/.cbdepcache
   if [ "${OS}" = "linux" ]; then cp -rp ~/.cbdepcache/* ${ESCROW}/.cbdepcache; fi
 }
 
