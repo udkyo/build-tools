@@ -33,8 +33,6 @@ WORKDIR=$1
 DOCKER_PLATFORM=$2
 SERVER_VERSION=$3
 
-source "${WORKDIR}/escrow/patches.sh"
-
 CBDEPS_VERSIONS="@@CBDEPS_VERSIONS@@"
 
 source "${WORKDIR}/escrow/escrow_config"
@@ -106,8 +104,6 @@ do
     cp -aL /escrow/deps/cbdep-${cbdep_ver}-${cbdeps_platform} "${CACHE}/cbdep/${cbdep_ver}/"
   fi
 done
-
-patch_md5s
 
 # Copy in all Go versions.
 heading "Copying Golang versions..."

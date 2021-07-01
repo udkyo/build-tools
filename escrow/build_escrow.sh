@@ -40,7 +40,7 @@ fatal() {
 cache_deps() {
   # Parses tlm/deps/manifest.cmake, downloading each package
   # to ${ESCROW}/deps/.cbdepscache
-  echo "# Patch: Caching deps"
+  echo "# Caching deps"
 
   local cache=${ESCROW}/.cbdepscache
   mkdir -p $cache || :
@@ -364,7 +364,7 @@ done
 cbdep_ver_latest=$(echo ${CBDEPS_VERSIONS} | tr ' ' '\n' | tail -1)
 
 # Get go versions
-GOVERS="$(echo $(find "${ESCROW}" -name CMakeLists.txt | xargs cat | awk '/GOVERSION [0-9]/ {print $2}' | grep -Eo "[0-9\.]+") | tr ' ' '\n' | sort -u | tr '\n' ' ') $EXTRA_GOLANG_VERSIONS"
+GOVERS=(1.8.5 1.11.6 1.10.3 1.13.7 1.15.8 1.16.5 1.13.14)
 heading "Downloading Go installers: ${GOVERS}"
 mkdir -p "${ESCROW}/golang"
 pushd "${ESCROW}/golang"
@@ -381,9 +381,9 @@ popd
 
 heading "Copying build scripts into escrow..."
 
-cp -a ./escrow_config templates/* patches.sh "${ESCROW}/"
+cp -a ./escrow_config templates/* "${ESCROW}/"
 perl -pi -e "s/\@\@VERSION\@\@/${VERSION}/g; s/\@\@PLATFORMS\@\@/${DISTROS}/g; s/\@\@CBDEPS_VERSIONS\@\@/${CBDEPS_VERSIONS}/g;" \
-  "${ESCROW}/README.md" "${ESCROW}/build-couchbase-server-from-escrow.sh" "${ESCROW}/patches.sh" "${ESCROW}/in-container-build.sh"
+  "${ESCROW}/README.md" "${ESCROW}/build-couchbase-server-from-escrow.sh" "${ESCROW}/in-container-build.sh"
 
 cache_deps
 # OpenJDK must be handled after analytics as analytics cmake is interrogated for SDK version
