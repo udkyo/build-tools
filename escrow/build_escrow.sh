@@ -357,7 +357,9 @@ for cbdep_ver in ${CBDEPS_VERSIONS}
 do
   if [ ! -f "${ESCROW}/deps/cbdep-${cbdep_ver}-linux" ]
   then
-    curl --fail -o "${ESCROW}/deps/cbdep-${cbdep_ver}-linux" "https://packages.couchbase.com/cbdep/${cbdep_ver}/cbdep-${cbdep_ver}-linux"
+    cbdep_url="https://packages.couchbase.com/cbdep/${cbdep_ver}/cbdep-${cbdep_ver}-linux"
+    echo "Retrieving ${cbdep_url}"
+    curl -s --fail -o "${ESCROW}/deps/cbdep-${cbdep_ver}-linux" "${cbdep_url}"
     chmod +x "${ESCROW}/deps/cbdep-${cbdep_ver}-linux"
   fi
 done
