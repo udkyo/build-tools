@@ -359,7 +359,13 @@ do
   then
     cbdep_url="https://packages.couchbase.com/cbdep/${cbdep_ver}/cbdep-${cbdep_ver}-linux"
     printf "Retrieving ${cbdep_url}... "
-    curl -s --fail -o "${ESCROW}/deps/cbdep-${cbdep_ver}-linux" "${cbdep_url}" && echo "ok"
+    if curl -s --fail -o "${ESCROW}/deps/cbdep-${cbdep_ver}-linux" "${cbdep_url}"
+    then
+      echo "ok"
+    else
+      echo "failed!"
+      exit 1
+    fi
     chmod +x "${ESCROW}/deps/cbdep-${cbdep_ver}-linux"
   fi
 done
