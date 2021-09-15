@@ -358,8 +358,8 @@ do
   if [ ! -f "${ESCROW}/deps/cbdep-${cbdep_ver}-linux" ]
   then
     cbdep_url="https://packages.couchbase.com/cbdep/${cbdep_ver}/cbdep-${cbdep_ver}-linux"
-    echo "Retrieving ${cbdep_url}"
-    curl -s --fail -o "${ESCROW}/deps/cbdep-${cbdep_ver}-linux" "${cbdep_url}"
+    printf "Retrieving ${cbdep_url}... "
+    curl -s --fail -o "${ESCROW}/deps/cbdep-${cbdep_ver}-linux" "${cbdep_url}" && echo "ok"
     chmod +x "${ESCROW}/deps/cbdep-${cbdep_ver}-linux"
   fi
 done
