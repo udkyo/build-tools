@@ -46,20 +46,14 @@ cache_deps() {
   mkdir -p $cache || :
   pushd $cache
 
-  for platform in ${DISTROS}
+  for platform in ${DISTROS} linux all
   do
     echo "platform: ${platform}"
-      if [ "${platform}" = "ubuntu18" ]
+      if [[ "${platform}" == ubuntu* ]]
       then
-        platform="ubuntu18.04"
-      elif [ "${platform}" = "ubuntu16" ]
-      then
-        platform="ubuntu16.04"
-      elif [ "${platform}" = "ubuntu20" ]
-      then
-        platform="ubuntu20.04"
+        platform=${platform}.04
       fi
-      urls=$(awk "/^DECLARE_DEP.*$platform/ {
+      urls=$(awk "/^DECLARE_DEP.*[^A-Za-z0-9]$platform[^A-Za-z0-9]/ {
         if(\$4 ~ /VERSION/) {
           url = \"https://packages.couchbase.com/couchbase-server/deps/\" substr(\$2,2) \"/\" \$5 \"/\" \$7 \"/\" substr(\$2,2) \"-${platform}-x86_64-\" \$5 \"-\" \$7;
           print url \".md5\";
@@ -70,6 +64,37 @@ cache_deps() {
           print url \".tgz\";
         }
       }" "${ESCROW}/src/tlm/deps/manifest.cmake")
+      if [ "${platform}" = "amzn2" -o "${platform}" = "linux" ]
+      then
+        # If platform is amzn2 or linux, we need to get x86-64 and aarch64
+        for url in $urls
+        do
+          urls="$urls ${url/x86_64/aarch64}"
+        done
+      elif [ "${platform}" = "all" ]
+      then
+        # If platform is "all" we need to get the all/noarch build
+        # the amzn2/aarch64 build, and builds for each distro
+        _urls=""
+        for url in $urls
+        do
+          for distro in $DISTROS
+          do
+            if [[ "${distro}" == ubuntu* ]]
+            then
+              distro=${distro}.04
+            fi
+            _url="${url/all/${distro}}"
+            _urls="${_urls} ${_url}"
+            if [ "${distro}" = "amzn2" ]
+            then
+              _urls="${_urls} ${_url/-x86_64-/-aarch64-}"
+            fi
+          done
+          _urls="${url/-x86_64-/-noarch-} $_urls"
+        done
+        urls=$_urls
+      fi
       for url in $urls
       do
         if [ ! -f "$(basename $url)" ]; then
@@ -119,13 +144,12 @@ cache_analytics() {
 
 cache_openjdk() {
   echo "# Caching openjdk"
-
   local openjdk_versions=$(awk '/SET \(_jdk_ver / {print substr($3, 1, length($3)-1)}' ${ESCROW}/src/analytics/cmake/Modules/FindCouchbaseJava.cmake) \
     || fatal "Couldn't get openjdk versions"
   echo "openjdk_versions: $openjdk_versions"
   for openjdk_version in $openjdk_versions
   do
-    "${ESCROW}/deps/cbdep-${cbdep_ver_latest}-${OS}" -p linux install -d ${ESCROW}/.cbdepscache -n openjdk "${openjdk_version}" || fatal "OpenJDK install failed"
+    "${ESCROW}/deps/cbdep-${cbdep_ver_latest}-${OS}-$(uname -m)" -p linux install -d ${ESCROW}/.cbdepscache -n openjdk "${openjdk_version}" || fatal "OpenJDK install failed"
   done
 }
 
@@ -268,13 +292,16 @@ stackfile=$(curl -L --fail https://raw.githubusercontent.com/couchbase/build-inf
 IMAGES=$(python3 - <<EOF
 import yaml
 
-stack = yaml.safe_load("""${stackfile}""")
+stack = yaml.safe_load("""
+${stackfile}
+""")
 distros = """
 ${DISTROS}
 """
 
 for distro in distros.split():
-    print(stack['services'][distro]['image'])
+    if distro not in ['linux', 'all']:
+        print(stack['services'][distro]['image'])
 EOF
 )
 
@@ -285,9 +312,9 @@ pushd "${ESCROW}/src"
 git config --global user.name "Couchbase Build Team"
 git config --global user.email "build-team@couchbase.com"
 git config --global color.ui false
+git config --global url."https://github.com/".insteadOf git://github.com/
 repo init -u ssh://git@github.com/couchbase/manifest -g all -m "${MANIFEST_FILE}"
 repo sync --jobs=6
-
 
 # Ensure we have git history for 'master' branch of tlm, so we can
 # switch to the right cbdeps build steps
@@ -300,13 +327,13 @@ echo "This directory contains third party dependency sources.
 Sources are included for reference, and are not compiled when building the escrow deposit." > "${ESCROW}/deps/src/README.md"
 
 # Determine set of cbdeps used by this build, per platform.
-for platform in ${DISTROS}
+for platform in ${DISTROS} linux all
 do
   platform=$(echo ${platform} | sed 's/-.*//')
   add_packs=$(
-    grep "${platform}" "${ESCROW}/src/tlm/deps/packages/folly/CMakeLists.txt" | grep -v V2 \
+    grep "DECLARE_DEP.*${platform}" "${ESCROW}/src/tlm/deps/packages/folly/CMakeLists.txt" | grep -v V2 \
     | awk '{sub(/\(/, "", $2); print $2 ":" $4}';
-    grep "${platform}" "${ESCROW}/src/tlm/deps/manifest.cmake" | grep -v V2 \
+    grep "DECLARE_DEP.*${platform}" "${ESCROW}/src/tlm/deps/manifest.cmake" | grep -v V2 \
     | awk '{sub(/\(/, "", $2); print $2 ":" $4}'
   )
   add_packs_v2=$(
@@ -350,23 +377,26 @@ get_cbdep_git depot_tools
 get_build_manifests_repo
 popd
 
-# Get cbdeps binaries
+# Get cbdeps binaries
 CBDEPS_VERSIONS="$(get_cbdeps_versions "${ESCROW}")"
 heading "Downloading cbdep versions: ${CBDEPS_VERSIONS}"
 for cbdep_ver in ${CBDEPS_VERSIONS}
 do
   if [ ! -f "${ESCROW}/deps/cbdep-${cbdep_ver}-linux" ]
   then
-    cbdep_url="https://packages.couchbase.com/cbdep/${cbdep_ver}/cbdep-${cbdep_ver}-linux"
-    printf "Retrieving ${cbdep_url}... "
-    if curl -s --fail -o "${ESCROW}/deps/cbdep-${cbdep_ver}-linux" "${cbdep_url}"
-    then
-      echo "ok"
-    else
-      echo "failed!"
-      exit 1
-    fi
-    chmod +x "${ESCROW}/deps/cbdep-${cbdep_ver}-linux"
+    filename="cbdep-${cbdep_ver}-linux"
+    cbdep_url="https://packages.couchbase.com/cbdep/${cbdep_ver}/${filename}"
+    printf "Retrieving cbdep ${cbdep_ver}... "
+    set +e
+    curl -s --fail -L -o "${ESCROW}/deps/${filename}" "${cbdep_url}"
+    # Try to get platform specific binaries - these won't exist for
+    # old versions
+    for arch in x86_64 aarch64
+    do
+      curl -s --fail -L -o "${ESCROW}/deps/${filename}-${arch}" "${cbdep_url}-${arch}"
+    done
+    set -e
+    chmod a+x ${ESCROW}/deps/cbdep-*
   fi
 done
 cbdep_ver_latest=$(echo ${CBDEPS_VERSIONS} | tr ' ' '\n' | tail -1)
@@ -402,6 +432,15 @@ copy_cbdepcache
 copy_container_images
 
 echo "Downloading rsync to ${ESCROW}/deps/rsync"
-curl -fLo "${ESCROW}/deps/rsync" https://github.com/JBBgameich/rsync-static/releases/download/continuous/rsync-x86
-
+for arch in aarch64 x86
+do
+  if [ "${arch}" = "x86" ]
+  then
+    dest_arch=x86_64
+  else
+    dest_arch=aarch64
+  fi
+  curl -fLo "${ESCROW}/deps/rsync-${dest_arch}" https://github.com/JBBgameich/rsync-static/releases/download/continuous/rsync-${arch}
+  chmod a+x "${ESCROW}/deps/rsync-${dest_arch}"
+done
 heading "Done!"

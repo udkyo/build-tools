@@ -81,7 +81,7 @@ mkdir -p "${WORKDIR}/.cbdepcache"
     ver_build=$(echo $package | sed -e 's/analytics-jars-//' -e 's/\.tar\.gz//')
     version=$(echo $ver_build | sed 's/-.*//')
     build=$(echo $ver_build | sed 's/.*-//')
-    /escrow/deps/cbdep-0.9.18-linux install analytics-jars ${version}-${build} --cache-local-file analytics-jars-${version}-${build}.tar.gz
+    /escrow/deps/cbdep-1.1.2-linux-$(uname -m) install analytics-jars ${version}-${build} --cache-local-file analytics-jars-${version}-${build}.tar.gz
   done
 )
 
@@ -100,8 +100,7 @@ do
   then
     echo "Copying"
     mkdir -p "${CACHE}/cbdep/${cbdep_ver}/"
-    cp -aL /escrow/deps/cbdep-${cbdep_ver}-${cbdeps_platform} "${CACHE}/cbdep/${cbdep_ver}/"
-    cp -aL /escrow/deps/cbdep-${cbdep_ver}-${cbdeps_platform} "${CACHE}/cbdep/${cbdep_ver}/"
+    cp -aL /escrow/deps/cbdep-${cbdep_ver}-${cbdeps_platform}* "${CACHE}/cbdep/${cbdep_ver}/"
   fi
 done
 

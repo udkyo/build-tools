@@ -90,9 +90,9 @@ DOCKER_EXEC_OPTION="${DOCKER_EXEC_OPTION} -ucouchbase"
 docker exec ${DOCKER_EXEC_OPTION} ${SLAVENAME} mkdir -p ${container_workdir}/escrow
 
 heading "Copying escrowed sources and dependencies into container"
-docker exec ${SLAVENAME} bash -c "cp /escrow/deps/rsync /usr/bin/rsync && chmod +x /usr/bin/rsync"
+docker exec ${SLAVENAME} bash -c "cp /escrow/deps/rsync-$(uname -m) /usr/bin/rsync && chmod +x /usr/bin/rsync"
 docker exec ${DOCKER_EXEC_OPTION} ${SLAVENAME} mkdir -p ${container_workdir}/escrow
-docker exec ${DOCKER_EXEC_OPTION} ${SLAVENAME} rm -f /escrow/src/godeps/src/github.com/google/flatbuffers/docs/source/CONTRIBUTING.md
+docker exec ${DOCKER_EXEC_OPTION} ${SLAVENAME} sudo rm -f /escrow/src/godeps/src/github.com/google/flatbuffers/docs/source/CONTRIBUTING.md
 docker exec ${DOCKER_EXEC_OPTION} ${SLAVENAME} rsync --update -Laz \
   /escrow/in-container-build.sh \
   /escrow/escrow_config \
