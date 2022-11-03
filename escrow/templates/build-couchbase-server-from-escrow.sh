@@ -26,7 +26,7 @@ then
   usage
 fi
 
-# Ensure docker
+# Ensure docker is present
 docker version > /dev/null 2>&1
 if [ $? -ne 0 ]
 then
@@ -90,18 +90,20 @@ DOCKER_EXEC_OPTION="${DOCKER_EXEC_OPTION} -ucouchbase"
 docker exec ${DOCKER_EXEC_OPTION} ${WORKER} mkdir -p ${container_workdir}/escrow
 
 heading "Copying escrowed sources and dependencies into container"
-docker exec ${WORKER} bash -c "cp /escrow/deps/rsync-$(uname -m) /usr/bin/rsync && chmod +x /usr/bin/rsync"
-docker exec ${DOCKER_EXEC_OPTION} ${WORKER} mkdir -p ${container_workdir}/escrow
-docker exec ${DOCKER_EXEC_OPTION} ${WORKER} sudo rm -f /escrow/src/godeps/src/github.com/google/flatbuffers/docs/source/CONTRIBUTING.md
-docker exec ${DOCKER_EXEC_OPTION} ${WORKER} rsync --update -Laz \
-  /escrow/in-container-build.sh \
-  /escrow/escrow_config \
-  /escrow/.cbdepscache \
-  /escrow/golang \
-  /escrow/src ${container_workdir}/escrow
-docker exec ${DOCKER_EXEC_OPTION} ${WORKER} rsync --update -Laz \
-  /escrow/.cbdepscache \
-  ${container_workdir}
+docker cp /escrow/deps/rsync-$(uname -m) ${WORKER}:/usr/bin/rsync
+docker exec ${WORKER} chmod a+x /usr/bin/rsync
+docker exec ${WORKER} mkdir -p ${container_workdir}/escrow
+docker exec ${WORKER} rm -f /escrow/src/godeps/src/github.com/google/flatbuffers/docs/source/CONTRIBUTING.md
+for f in /escrow/in-container-build.sh \
+         /escrow/escrow_config \
+         /escrow/.cbdepscache \
+         /escrow/golang \
+         /escrow/src; do
+  docker cp $f ${WORKER}:/escrow
+done
+
+docker cp /escrow/.cbdepscache ${WORKER}:${container_workdir}
+
 docker exec ${WORKER} chown -R couchbase:couchbase ${container_workdir}/escrow/in-container-build.sh ${container_workdir}/escrow/escrow_config
 
 # Launch build process
