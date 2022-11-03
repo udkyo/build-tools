@@ -282,7 +282,7 @@ stack = yaml.safe_load("""
 ${stackfile}
 """)
 
-for services in ['amzn2', 'linux-single']:
+for service in ['amzn2', 'linux-single']:
     print(stack['services'][service]['image'])
 EOF
 )
