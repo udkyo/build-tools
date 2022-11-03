@@ -90,16 +90,16 @@ DOCKER_EXEC_OPTION="${DOCKER_EXEC_OPTION} -ucouchbase"
 docker exec ${DOCKER_EXEC_OPTION} ${WORKER} mkdir -p ${container_workdir}/escrow
 
 heading "Copying escrowed sources and dependencies into container"
-docker cp /escrow/deps/rsync-$(uname -m) ${WORKER}:/usr/bin/rsync
+docker cp ./deps/rsync-$(uname -m) ${WORKER}:/usr/bin/rsync
 docker exec ${WORKER} chmod a+x /usr/bin/rsync
 docker exec ${WORKER} mkdir -p ${container_workdir}/escrow
-docker exec ${WORKER} rm -f /escrow/src/godeps/src/github.com/google/flatbuffers/docs/source/CONTRIBUTING.md
-for f in /escrow/in-container-build.sh \
-         /escrow/escrow_config \
-         /escrow/.cbdepscache \
-         /escrow/golang \
-         /escrow/src; do
-  docker cp $f ${WORKER}:/escrow
+docker exec ${WORKER} rm -f ./src/godeps/src/github.com/google/flatbuffers/docs/source/CONTRIBUTING.md
+for f in ./in-container-build.sh \
+         ./escrow_config \
+         ./.cbdepscache \
+         ./golang \
+         ./src; do
+  docker cp $f ${WORKER}:${container_workdir}/escrow
 done
 
 docker cp /escrow/.cbdepscache ${WORKER}:${container_workdir}
