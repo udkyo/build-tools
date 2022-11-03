@@ -67,7 +67,6 @@ then
   # things on our LAN. We also point packages.couchbase.com to
   # a bogus IP to ensure we aren't dependent on existing packages.
   docker run --name "${WORKER}" -d \
-    -v `pwd`:/escrow \
     --add-host packages.couchbase.com:8.8.8.8 \
     --dns 8.8.8.8 \
     "${IMAGE}" tail -f /dev/null
@@ -102,7 +101,7 @@ for f in ./in-container-build.sh \
   docker cp $f ${WORKER}:${container_workdir}/escrow
 done
 
-docker cp /escrow/.cbdepscache ${WORKER}:${container_workdir}
+docker cp ./.cbdepscache ${WORKER}:${container_workdir}
 
 docker exec ${WORKER} chown -R couchbase:couchbase ${container_workdir}/escrow/in-container-build.sh ${container_workdir}/escrow/escrow_config
 
