@@ -46,13 +46,9 @@ cache_deps() {
   mkdir -p $cache || :
   pushd $cache
 
-  for platform in ${DISTROS} linux all
+  for platform in amzn2 linux centos7 all
   do
     echo "platform: ${platform}"
-      if [[ "${platform}" == ubuntu* ]]
-      then
-        platform=${platform}.04
-      fi
       urls=$(awk "/^DECLARE_DEP.*[^A-Za-z0-9]$platform[^A-Za-z0-9]/ {
         if(\$4 ~ /VERSION/) {
           url = \"https://packages.couchbase.com/couchbase-server/deps/\" substr(\$2,2) \"/\" \$5 \"/\" \$7 \"/\" substr(\$2,2) \"-${platform}-x86_64-\" \$5 \"-\" \$7;
@@ -74,23 +70,13 @@ cache_deps() {
       elif [ "${platform}" = "all" ]
       then
         # If platform is "all" we need to get the all/noarch build
-        # the amzn2/aarch64 build, and builds for each distro
+        # and the amzn2/aarch64 build
         _urls=""
         for url in $urls
         do
-          for distro in $DISTROS
-          do
-            if [[ "${distro}" == ubuntu* ]]
-            then
-              distro=${distro}.04
-            fi
-            _url="${url/all/${distro}}"
+            _url="${url/all/amzn2}"
             _urls="${_urls} ${_url}"
-            if [ "${distro}" = "amzn2" ]
-            then
-              _urls="${_urls} ${_url/-x86_64-/-aarch64-}"
-            fi
-          done
+            _urls="${_urls} ${_url/-x86_64-/-aarch64-}"
           _urls="${url/-x86_64-/-noarch-} $_urls"
         done
         urls=$_urls
@@ -102,7 +88,7 @@ cache_deps() {
           curl -fO "$url" \
             || fatal "Package download failed"
         else
-          echo "$(basename $url) already present"
+          echo "$(pwd)/$(basename $url) already present"
         fi
       done
   done
@@ -242,14 +228,14 @@ copy_container_images() {
   pushd "${ESCROW}/docker_images"
   for img in ${IMAGES}
   do
-    heading "Saving Docker image ${img}"
-    if [ "$(docker image ls -q ${img})" == "" ]
-    then
-      echo "... Pulling ${img}..."
-      docker pull "${img}"
+    if [[ "${img}" = *"amzn2"* ]]; then
+      platform_arg="--platform linux/arm64"
     else
-      echo "... Image already pulled"
+      unset platform_arg
     fi
+    heading "Saving Docker image ${img}"
+    echo "... Pulling ${img}..."
+    docker pull ${platform_arg} "${img}"
 
     output=$(basename "${img}").tar.gz
     if [ ! -f ${output} ]
@@ -295,13 +281,9 @@ import yaml
 stack = yaml.safe_load("""
 ${stackfile}
 """)
-distros = """
-${DISTROS}
-"""
 
-for distro in distros.split():
-    if distro not in ['linux', 'all']:
-        print(stack['services'][distro]['image'])
+for services in ['amzn2', 'linux-single']:
+    print(stack['services'][service]['image'])
 EOF
 )
 
@@ -327,7 +309,7 @@ echo "This directory contains third party dependency sources.
 Sources are included for reference, and are not compiled when building the escrow deposit." > "${ESCROW}/deps/src/README.md"
 
 # Determine set of cbdeps used by this build, per platform.
-for platform in ${DISTROS} linux all
+for platform in amzn2 centos7 linux all
 do
   platform=$(echo ${platform} | sed 's/-.*//')
   add_packs=$(
@@ -378,9 +360,9 @@ get_build_manifests_repo
 popd
 
 # Get cbdeps binaries
-CBDEPS_VERSIONS="$(get_cbdeps_versions "${ESCROW}")"
-heading "Downloading cbdep versions: ${CBDEPS_VERSIONS}"
-for cbdep_ver in ${CBDEPS_VERSIONS}
+CBDEP_VERSIONS="$(get_cbdeps_versions "${ESCROW}")"
+heading "Downloading cbdep versions: ${CBDEP_VERSIONS}"
+for cbdep_ver in ${CBDEP_VERSIONS}
 do
   if [ ! -f "${ESCROW}/deps/cbdep-${cbdep_ver}-linux" ]
   then
@@ -399,7 +381,7 @@ do
     chmod a+x ${ESCROW}/deps/cbdep-*
   fi
 done
-cbdep_ver_latest=$(echo ${CBDEPS_VERSIONS} | tr ' ' '\n' | tail -1)
+cbdep_ver_latest=$(echo ${CBDEP_VERSIONS} | tr ' ' '\n' | tail -1)
 
 # Get go versions
 GOVERS="$(echo $(find "${ESCROW}" -name CMakeLists.txt | xargs cat | awk '/GOVERSION [0-9]/ {print $2}' | grep -Eo "[0-9\.]+") | tr ' ' '\n' | sort -u | tr '\n' ' ') $EXTRA_GOLANG_VERSIONS"
@@ -420,7 +402,7 @@ popd
 heading "Copying build scripts into escrow..."
 
 cp -a ./escrow_config templates/* "${ESCROW}/"
-perl -pi -e "s/\@\@VERSION\@\@/${VERSION}/g; s/\@\@PLATFORMS\@\@/${DISTROS}/g; s/\@\@CBDEPS_VERSIONS\@\@/${CBDEPS_VERSIONS}/g;" \
+perl -pi -e "s/\@\@VERSION\@\@/${VERSION}/g; s/\@\@CBDEP_VERSIONS\@\@/${CBDEP_VERSIONS}/g;" \
   "${ESCROW}/README.md" "${ESCROW}/build-couchbase-server-from-escrow.sh" "${ESCROW}/in-container-build.sh"
 
 cache_deps

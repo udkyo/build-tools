@@ -33,7 +33,7 @@ WORKDIR=$1
 DOCKER_PLATFORM=$2
 SERVER_VERSION=$3
 
-CBDEPS_VERSIONS="@@CBDEPS_VERSIONS@@"
+CBDEP_VERSIONS="@@CBDEP_VERSIONS@@"
 
 source "${WORKDIR}/escrow/escrow_config"
 
@@ -41,9 +41,6 @@ source "${WORKDIR}/escrow/escrow_config"
 if [ "${DOCKER_PLATFORM}" = "ubuntu18" ]
 then
   PLATFORM=ubuntu18.04
-elif [ "${DOCKER_PLATFORM}" = "ubuntu16" ]
-then
-  PLATFORM=ubuntu16.04
 else
   PLATFORM="${DOCKER_PLATFORM}"
 fi
@@ -63,13 +60,6 @@ export ROOT="${WORKDIR}/escrow"
 CACHE="${WORKDIR}/.cbdepscache"
 TLMDIR="${WORKDIR}/tlm"
 
-# Not sure why this is necessary, but it is for v8
-if [ "${PLATFORM}" = "ubuntu16.04" ]
-then
-  heading "Installing pkg-config..."
-  sudo apt-get update && sudo apt-get install -y pkg-config
-fi
-
 # Create all cbdeps. Start with the cache directory.
 mkdir -p "${CACHE}"
 mkdir -p "${WORKDIR}/.cbdepcache"
@@ -86,14 +76,14 @@ mkdir -p "${WORKDIR}/.cbdepcache"
 )
 
 # Pre-populate cbdeps
-heading "Populating ${PLATFORM} cbdeps... (${CBDEPS_VERSIONS})"
+heading "Populating ${PLATFORM} cbdeps... (${CBDEP_VERSIONS})"
 
 case "${PLATFORM}" in
   mac*) cbdeps_platform='macos' ;;
   win*) cbdeps_platform='window';;
      *) cbdeps_platform='linux' ;;
 esac
-for cbdep_ver in ${CBDEPS_VERSIONS}
+for cbdep_ver in ${CBDEP_VERSIONS}
 do
   echo "Checking ${cbdep_ver}"
   if [ ! -d "${CACHE}/cbdep/${cbdep_ver}/" -o ! -f "${CACHE}/cbdep/${cbdep_ver}/cbdep-${cbdep_ver}-${cbdeps_platform}" ]
