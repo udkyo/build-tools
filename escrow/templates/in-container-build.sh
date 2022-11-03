@@ -22,14 +22,14 @@ sudo rm -rf $(which python)
 sudo ln -s $(which python2) /usr/bin/python
 
 # Error-check. This directory should exist due to the "docker run" mount.
-if [ ! -e /escrow ]
+if [ ! -e /home/couchbase/escrow ]
 then
   echo "This script is intended to be run inside a specifically-configured "
   echo "Docker container. See build-couchbase-server-from-escrow.sh."
   exit 100
 fi
 
-WORKDIR=$1
+WORKDIR=/home/couchbase
 DOCKER_PLATFORM=$2
 SERVER_VERSION=$3
 
