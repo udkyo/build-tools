@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -ex
 source ./escrow_config || exit 1
 
 # Top-level directory; everything to escrow goes in here.
@@ -274,6 +274,10 @@ get_cbdeps_versions() {
 
 # Retrieve list of current Docker image/tags from stackfile
 stackfile=$(curl -L --fail https://raw.githubusercontent.com/couchbase/build-infra/master/docker-stacks/couchbase-server/server-jenkins-buildslaves.yml)
+
+python3 -m venv /tmp/escrow_venv
+source /tmp/escrow_venv/bin/activate
+pip3 install pyyaml
 
 IMAGES=$(python3 - <<EOF
 import yaml
