@@ -275,8 +275,8 @@ get_cbdeps_versions() {
 # Retrieve list of current Docker image/tags from stackfile
 stackfile=$(curl -L --fail https://raw.githubusercontent.com/couchbase/build-infra/master/docker-stacks/couchbase-server/server-jenkins-buildslaves.yml)
 
-python3 -m venv /tmp/escrow_venv
-source /tmp/escrow_venv/bin/activate
+python3 -m venv escrow_venv
+source escrow_venv/bin/activate
 pip3 install pyyaml
 
 IMAGES=$(python3 - <<EOF
