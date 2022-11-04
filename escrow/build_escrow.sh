@@ -1,5 +1,5 @@
 #!/bin/bash
-set -ex
+set -e
 source ./escrow_config || exit 1
 
 # Top-level directory; everything to escrow goes in here.
