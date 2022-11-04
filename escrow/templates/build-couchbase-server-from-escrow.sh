@@ -102,6 +102,7 @@ for f in ./in-container-build.sh \
 done
 
 docker cp ./.cbdepscache ${WORKER}:${container_workdir}
+docker cp ./deps ${WORKER}:${container_workdir}
 
 docker exec ${WORKER} chown -R couchbase:couchbase ${container_workdir}/escrow/in-container-build.sh ${container_workdir}/escrow/escrow_config
 
