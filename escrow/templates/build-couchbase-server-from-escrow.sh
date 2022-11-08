@@ -70,7 +70,6 @@ then
     --add-host packages.couchbase.com:8.8.8.8 \
     --dns 8.8.8.8 \
     "${IMAGE}" tail -f /dev/null
-  trap "docker rm -f ${PLATFORM}-worker" EXIT
 else
   docker start "${WORKER}"
 fi
