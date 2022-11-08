@@ -69,6 +69,7 @@ then
   docker run --name "${WORKER}" -d \
     --add-host packages.couchbase.com:8.8.8.8 \
     --dns 8.8.8.8 \
+    -v /var/run/docker.sock:/var/run/docker.sock \
     "${IMAGE}" tail -f /dev/null
 else
   docker start "${WORKER}"
