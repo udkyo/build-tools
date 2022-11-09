@@ -93,8 +93,8 @@ then
     -v /var/run/docker.sock:/var/run/docker.sock:rw \
     -v serverbuild_optcouchbase:/opt/couchbase \
     "${IMAGE}" bash -c "set -x \
-                          && groupadd -g ${dockergroup} docker \
-                          && usermod -aG docker couchbase \
+                          && (groups | grep docker || groupadd -g ${dockergroup} docker) \
+                          && (groups couchbase | grep docker || usermod -aG docker couchbase) \
                           && tail -f /dev/null"
 else
   docker start "${WORKER}"
