@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -ex
 
 # These platforms correspond to the available Docker worker images.
 PLATFORMS="amzn2 linux"
@@ -73,6 +73,8 @@ then
   # user to this group
   dockergroup=$(getent group docker | cut -d: -f3)
 
+  # Our jenkins workers run in containers, so we need to ensure we're
+  # mounting the correct host directories
   if [ "$CB_INTERNAL_JENKINS" != "" ]; then
     if [ "$(uname -m)" = "aarch64" ]; then
       JENKINS_MOUNT="-v /ephemeral/jenkins/workspace/server-escrow/build-tools/escrow/output/couchbase-server-@@VERSION@@:/home/couchbase/escrow"
