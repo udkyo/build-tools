@@ -17,6 +17,9 @@ then
 fi
 export PLATFORM=$1
 
+# Used for internal testing
+export CB_INTERNAL_JENKINS=$2
+
 container_workdir=/home/couchbase
 
 sup=$(echo ${PLATFORMS} | egrep "\b${PLATFORM}\b" || true)
@@ -70,15 +73,23 @@ then
   # user to this group
   dockergroup=$(getent group docker | cut -d: -f3)
 
+  if [ "$CB_INTERNAL_JENKINS" != "" ]; then
+    if [ "$(uname -m)" = "aarch64" ]; then
+      JENKINS_MOUNT="-v /ephemeral/jenkins/workspace/server-escrow/build-tools/escrow/output/couchbase-server-@@VERSION@@:/home/couchbase/escrow"
+    else
+      JENKINS_MOUNT="-v /home/couchbase/workspace/server-escrow/build-tools/escrow/output/couchbase-server-@@VERSION@@:/home/couchbase/escrow"
+    fi
+  fi
+
   # We specify external DNS (Google's) to ensure we don't find
   # things on our LAN. We also point packages.couchbase.com to
   # a bogus IP to ensure we aren't dependent on existing packages.
   docker run --name "${WORKER}" -d \
     --add-host packages.couchbase.com:8.8.8.8 \
     --dns 8.8.8.8 \
-    -v /home/couchbase/workspace/server-escrow/build-tools/escrow/output/couchbase-server-@@VERSION@@:/home/couchbase/escrow \
+    ${JENKINS_MOUNT} \
     -v /var/run/docker.sock:/var/run/docker.sock:rw \
-    -v /opt/couchbase:/opt/couchbase \
+    -v serverbuild_optcouchbase:/opt/couchbase \
     "${IMAGE}" bash -c "set -x \
                           && groupadd -g ${dockergroup} docker \
                           && usermod -aG docker couchbase \
