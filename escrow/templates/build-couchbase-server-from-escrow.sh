@@ -81,6 +81,12 @@ then
     else
       JENKINS_MOUNT="-v /home/couchbase/workspace/server-escrow/build-tools/escrow/output/couchbase-server-@@VERSION@@:/home/couchbase/escrow"
     fi
+    CMD="set -x \
+         && (cat /etc/group | grep docker || groupadd -g ${dockergroup} docker) \
+         && (groups couchbase | grep docker || usermod -aG docker couchbase) \
+         && tail -f /dev/null"
+  else
+    CMD="tail -f /dev/null"
   fi
 
   # We specify external DNS (Google's) to ensure we don't find
@@ -92,10 +98,7 @@ then
     ${JENKINS_MOUNT} \
     -v /var/run/docker.sock:/var/run/docker.sock:rw \
     -v serverbuild_optcouchbase:/opt/couchbase \
-    "${IMAGE}" bash -c "set -x \
-                          && (groups | grep docker || groupadd -g ${dockergroup} docker) \
-                          && (groups couchbase | grep docker || usermod -aG docker couchbase) \
-                          && tail -f /dev/null"
+    "${IMAGE}" bash -c "${CMD}"
 else
   docker start "${WORKER}"
 fi
