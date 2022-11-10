@@ -1,5 +1,5 @@
 #!/bin/bash
-set -ex
+set -e
 
 # These platforms correspond to the available Docker worker images.
 PLATFORMS="amzn2 linux"
@@ -17,8 +17,8 @@ then
 fi
 export PLATFORM=$1
 
-# Used for internal testing
-export CB_INTERNAL_JENKINS=$2
+# Used when running inside a container
+export HOST_VOLUME_PATH=$2
 
 container_workdir=/home/couchbase
 
@@ -35,6 +35,11 @@ if [ $? -ne 0 ]
 then
   echo "Docker is required to be installed!"
   exit 5
+fi
+
+if [ "$HOST_VOLUME_PATH" = ""  -a -f "/.dockerenv" ]
+then
+  echo "Please run this script on bare metal/VM or provide an additional arg with the absolute *host* path to the directory containing the escrow deposit"
 fi
 
 heading() {
@@ -69,24 +74,19 @@ then
   # We need to make sure the user inside the container can
   # access the docker socket for interacting with the sidecar
   # containers, so we get the docker gid on the host, create
-  # the docker group in the container, and then add the couchbase
-  # user to this group
+  # the docker group in the container (if missing), and then
+  # add the couchbase user (if missing)
   dockergroup=$(getent group docker | cut -d: -f3)
 
-  # Our jenkins workers run in containers, so we need to ensure we're
-  # mounting the correct host directories
-  if [ "$CB_INTERNAL_JENKINS" != "" ]; then
-    if [ "$(uname -m)" = "aarch64" ]; then
-      JENKINS_MOUNT="-v /ephemeral/jenkins/workspace/server-escrow/build-tools/escrow/output/couchbase-server-@@VERSION@@:/home/couchbase/escrow"
-    else
-      JENKINS_MOUNT="-v /home/couchbase/workspace/server-escrow/build-tools/escrow/output/couchbase-server-@@VERSION@@:/home/couchbase/escrow"
-    fi
+  # At couchbase we have different paths at the top level on
+  # AWS and on-prem so need to make sure we're mounting the
+  # correct dirs when our tests run
+  if [ "${HOST_VOLUME_PATH}" != "" ]; then
+    MOUNT="-v ${HOST_VOLUME_PATH}:/home/couchbase/escrow"
     CMD="set -x \
          && (cat /etc/group | grep docker || groupadd -g ${dockergroup} docker) \
          && (groups couchbase | grep docker || usermod -aG docker couchbase) \
          && tail -f /dev/null"
-  else
-    CMD="tail -f /dev/null"
   fi
 
   # We specify external DNS (Google's) to ensure we don't find
@@ -116,20 +116,9 @@ fi
 DOCKER_EXEC_OPTION="${DOCKER_EXEC_OPTION} -ucouchbase"
 
 docker exec ${DOCKER_EXEC_OPTION} ${WORKER} mkdir -p ${container_workdir}/escrow
-
-# heading "Copying escrowed sources and dependencies into container"
-# docker cp ./deps/rsync-$(uname -m) ${WORKER}:/usr/bin/rsync
-# docker exec ${WORKER} chmod a+x /usr/bin/rsync
-# docker exec ${WORKER} mkdir -p ${container_workdir}/escrow
 docker exec ${WORKER} rm -f ./src/godeps/src/github.com/google/flatbuffers/docs/source/CONTRIBUTING.md
-# for f in ./in-container-build.sh \
-#          ./escrow_config \
-#          ./.cbdepscache \
-#          ./golang \
-#          ./src; do
-#   docker cp $f ${WORKER}:${container_workdir}/escrow
-# done
 
+# heading "Copying escrowed dependencies into container"
 docker cp ./.cbdepscache ${WORKER}:${container_workdir}
 docker cp ./deps ${WORKER}:${container_workdir}
 

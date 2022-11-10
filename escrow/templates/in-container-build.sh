@@ -37,14 +37,6 @@ CBDEP_VERSIONS="@@CBDEP_VERSIONS@@"
 
 source "${WORKDIR}/escrow/escrow_config"
 
-# Convert Docker platform to Build platform (sorry they're different)
-if [ "${DOCKER_PLATFORM}" = "ubuntu18" ]
-then
-  PLATFORM=ubuntu18.04
-else
-  PLATFORM="${DOCKER_PLATFORM}"
-fi
-
 export PLATFORM
 
 heading() {
