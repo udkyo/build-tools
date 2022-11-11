@@ -53,6 +53,8 @@ then
   # or move it out to a VM
   if [ -f "/.dockerenv" ]; then
     echo "Please run this script on bare metal/VM or provide an additional arg with the absolute *host* path to the directory containing the escrow deposit"
+  else
+    MOUNT="-v $(pwd):/home/couchbase/escrow"
   fi
 else
   MOUNT="-v ${HOST_VOLUME_PATH}:/home/couchbase/escrow"
@@ -146,3 +148,5 @@ do
   localfile=`basename ${file}`
   mv ${localfile} ${localfile/-9999/}
 done
+
+docker rm -f "${WORKER}"
