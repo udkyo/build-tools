@@ -5,8 +5,10 @@ set -e
 PLATFORMS="amzn2 linux"
 
 usage() {
-  echo "Usage: $0 <platform>"
-  echo "  where <platform> is one of: ${PLATFORMS}"
+  echo "Usage: $0 <platform> [<host_path>]"
+  echo "args:"
+  echo "  platform - one of: ${PLATFORMS}"
+  echo "  host_path - path to the volume this script resides in (required only if script is being run in a container)"
   exit 1
 }
 
@@ -15,9 +17,8 @@ if [ $# -eq 0 ]
 then
   usage
 fi
-export PLATFORM=$1
 
-# Used when running inside a container
+export PLATFORM=$1
 export HOST_VOLUME_PATH=$2
 
 container_workdir=/home/couchbase
@@ -37,9 +38,24 @@ then
   exit 5
 fi
 
-if [ "$HOST_VOLUME_PATH" = ""  -a -f "/.dockerenv" ]
+# We need to make sure the user inside the container can
+# access the docker socket for interacting with the sidecar
+# containers, to accomplish this, we get the docker gid on
+# the host up front, create the docker group in the container
+# at startup (if missing), and then add the couchbase user
+# (if missing)
+dockergroup=$(getent group docker | cut -d: -f3)
+
+if [ "$HOST_VOLUME_PATH" = "" ]
 then
-  echo "Please run this script on bare metal/VM or provide an additional arg with the absolute *host* path to the directory containing the escrow deposit"
+  # If this script is running inside a container, we need
+  # to know the host path to the directory it lives in
+  # or move it out to a VM
+  if [ -f "/.dockerenv" ]; then
+    echo "Please run this script on bare metal/VM or provide an additional arg with the absolute *host* path to the directory containing the escrow deposit"
+  fi
+else
+  MOUNT="-v ${HOST_VOLUME_PATH}:/home/couchbase/escrow"
 fi
 
 heading() {
@@ -71,23 +87,6 @@ if [ $? -ne 0 ]
 then
   set -e
   heading "Starting Docker worker container..."
-  # We need to make sure the user inside the container can
-  # access the docker socket for interacting with the sidecar
-  # containers, so we get the docker gid on the host, create
-  # the docker group in the container (if missing), and then
-  # add the couchbase user (if missing)
-  dockergroup=$(getent group docker | cut -d: -f3)
-
-  # At couchbase we have different paths at the top level on
-  # AWS and on-prem so need to make sure we're mounting the
-  # correct dirs when our tests run
-  if [ "${HOST_VOLUME_PATH}" != "" ]; then
-    MOUNT="-v ${HOST_VOLUME_PATH}:/home/couchbase/escrow"
-    CMD="set -x \
-         && (cat /etc/group | grep docker || groupadd -g ${dockergroup} docker) \
-         && (groups couchbase | grep docker || usermod -aG docker couchbase) \
-         && tail -f /dev/null"
-  fi
 
   # We specify external DNS (Google's) to ensure we don't find
   # things on our LAN. We also point packages.couchbase.com to
@@ -98,14 +97,18 @@ then
     ${MOUNT} \
     -v /var/run/docker.sock:/var/run/docker.sock:rw \
     -v serverbuild_optcouchbase:/opt/couchbase \
-    "${IMAGE}" bash -c "${CMD}"
+    "${IMAGE}" bash -c "set -x \
+       && (cat /etc/group | grep docker || groupadd -g ${dockergroup} docker) \
+       && (groups couchbase | grep docker || usermod -aG docker couchbase) \
+       && tail -f /dev/null"
 else
   docker start "${WORKER}"
 fi
 set -e
 
 # Load local copy of escrowed source code into container
-# Removed -t from docker exec command as Jenkins doesn't like it: the input device is not a TTY
+# Removed -t from docker exec command as Jenkins doesn't like it: the input
+# device is not a TTY
 if [[ ! -z ${WORKSPACE} ]]
 then
   DOCKER_EXEC_OPTION='-i'
