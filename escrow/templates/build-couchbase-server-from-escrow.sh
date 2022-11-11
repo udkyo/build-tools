@@ -95,7 +95,7 @@ then
   docker run --name "${WORKER}" -d \
     --add-host packages.couchbase.com:8.8.8.8 \
     --dns 8.8.8.8 \
-    ${JENKINS_MOUNT} \
+    ${MOUNT} \
     -v /var/run/docker.sock:/var/run/docker.sock:rw \
     -v serverbuild_optcouchbase:/opt/couchbase \
     "${IMAGE}" bash -c "${CMD}"
