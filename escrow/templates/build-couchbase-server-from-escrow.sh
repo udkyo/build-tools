@@ -34,7 +34,7 @@ fi
 docker version > /dev/null 2>&1
 if [ $? -ne 0 ]
 then
-  echo "Docker is required to be installed!"
+  echo "Docker must be installed and usable by the current user to build from escrow"
   exit 5
 fi
 
@@ -139,7 +139,7 @@ docker exec ${DOCKER_EXEC_OPTION} ${WORKER} bash \
 # And copy the installation packages out of the container.
 heading "Copying installer binaries"
 
-cd ..
+cd ${ROOT}
 
 for file in `docker exec ${WORKER} bash -c \
   "ls ${container_workdir}/escrow/src/*${PLATFORM}*"`
