@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -ex
 
 # These platforms correspond to the available Docker worker images.
 PLATFORMS="amzn2 linux"
@@ -142,6 +142,7 @@ heading "Copying installer binaries"
 cd ${ROOT}
 
 for file in "src/*${PLATFORM}*"; do
+  ls $file
   filename=`basename ${file}`
   mv ${file} ../${basename/-9999/}
 done
