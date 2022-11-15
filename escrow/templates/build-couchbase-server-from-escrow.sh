@@ -141,12 +141,10 @@ heading "Copying installer binaries"
 
 cd ${ROOT}
 
-for file in `docker exec ${WORKER} bash -c \
-  "ls ${container_workdir}/escrow/src/*${PLATFORM}*"`
-do
-  docker cp ${WORKER}:${file} .
-  localfile=`basename ${file}`
-  mv ${localfile} ${localfile/-9999/}
+for file in "src/*${PLATFORM}*"; do
+  filename=`basename ${file}`
+  mv ${file} ../${basename/-9999/}
 done
+rm -rf src/*.deb src/*.rpm *.tar.gz
 
 docker rm -f "${WORKER}"
