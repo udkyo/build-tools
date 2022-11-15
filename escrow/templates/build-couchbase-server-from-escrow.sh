@@ -141,7 +141,7 @@ heading "Copying installer binaries"
 
 cd ${ROOT}
 
-for file in "src/*${PLATFORM}*"; do
+for file in src/*${PLATFORM}*; do
   ls $file
   filename=`basename ${file}`
   mv ${file} ../${basename/-9999/}
