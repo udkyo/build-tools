@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-print("Script starting execution")
-
 import argparse
 import base64
 import os
@@ -341,7 +339,21 @@ def real_main():
                         default="ssh://git@github.com/couchbase/manifest",
                         help="Alternate Git project for manifest")
     args = parser.parse_args()
-    manifest_project = args.manifest_project
+
+    # In GitHub Actions mode, look for the manifest repo in the workspace
+    if TRIGGER == "GITHUB":
+        # Check relative to current directory
+        local_manifest = os.path.abspath(os.path.join("..", "..", "manifest"))
+        if os.path.isdir(local_manifest):
+            print(f"Using manifest repository: {local_manifest}")
+            manifest_project = local_manifest
+        else:
+            print(f"::error::Fatal error: Manifest repository not found at {local_manifest}")
+            print(f"❌ Expected manifest repository at {local_manifest} but directory doesn't exist.")
+            sys.exit(1)
+    else:
+        manifest_project = args.manifest_project
+
     # Clean out report file
     if os.path.exists(html_filename):
         os.remove(html_filename)
