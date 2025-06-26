@@ -44,7 +44,7 @@ jobs:
       - name: Checkout build-tools repo
         uses: actions/checkout@v4
         with:
-          repository: https://github.com/udkyo/build-tools
+          repository: udkyo/build-tools
           ref: main
           path: build-tools
 
