@@ -330,6 +330,7 @@ def real_main():
     """
     Main function that performs the actual restriction check
     """
+    print("Starting up")
     # Set up environment variables first
     setup_environment()
 
