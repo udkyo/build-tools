@@ -9,7 +9,11 @@ import requests
 
 from jira_util import connect_jira, get_tickets
 from importmonkey import add_path
-add_path("../build-from-manifest")
+
+# Use script directory for reliable path resolution
+script_dir = os.path.dirname(os.path.abspath(__file__))
+build_from_manifest_path = os.path.abspath(os.path.join(script_dir, "..", "build-from-manifest"))
+add_path(build_from_manifest_path)
 from manifest_util import scan_manifests
 
 """

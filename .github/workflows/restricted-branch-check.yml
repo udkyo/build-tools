@@ -55,9 +55,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install rye
+          pip install uv
           cd build-tools/restriction
-          rye sync
+          uv pip install -r requirements.lock
 
       - name: Run restriction checker
         id: branch-check
@@ -70,7 +70,7 @@ jobs:
           JIRA_USER: ${{ secrets.JIRA_USERNAME }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
         run: |
-          (cd build-tools/restriction && rye run restricted-branch-check && echo "status=success" >> $GITHUB_OUTPUT) || {
+          (cd build-tools/restriction && uv run restricted_branch_check.py && echo "status=success" >> $GITHUB_OUTPUT) || {
             echo "status=failure" >> $GITHUB_OUTPUT
             exit 1
           }
