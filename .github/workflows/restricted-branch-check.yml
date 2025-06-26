@@ -32,7 +32,7 @@ jobs:
     name: Check Branch Restrictions
     runs-on: ubuntu-latest
     outputs:
-      status: ${{ steps.branch-check.outputs.status }}
+      status: ${{ steps.final-status.outputs.status }}
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v4
@@ -56,6 +56,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install "cython<3"
+          pip install --no-build-isolation pyyaml==6.0
           pip install rye
           cd build-tools/restriction
           rye sync
@@ -76,12 +77,22 @@ jobs:
             exit 1
           }
 
+      - name: Set final status
+        if: always()
+        id: final-status
+        run: |
+          if [[ "${{ job.status }}" == "success" ]]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+          fi
+
       - name: Generate summary
         if: always()
         run: |
-          if [[ "${{ steps.branch-check.outputs.status }}" == "failure" ]]; then
+          if [[ "${{ steps.final-status.outputs.status }}" == "failure" ]]; then
             echo "## ❌ Restricted Branch Check Failed" >> $GITHUB_STEP_SUMMARY
-            echo "This PR cannot be merged until all the restricted branch requirements are met." >> $GITHUB_STEP_SUMMARY
+            echo "This PR cannot be merged until all the restricted branch requirements are met or the workflow is fixed." >> $GITHUB_STEP_SUMMARY
           else
             echo "## ✅ Restricted Branch Check Passed" >> $GITHUB_STEP_SUMMARY
             echo "All required approvals are in place for the target branch." >> $GITHUB_STEP_SUMMARY
