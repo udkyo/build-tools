@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+print("Script starting execution")
+
 import argparse
 import base64
 import os
@@ -330,7 +332,6 @@ def real_main():
     """
     Main function that performs the actual restriction check
     """
-    print("Starting up")
     # Set up environment variables first
     setup_environment()
 
@@ -435,3 +436,7 @@ def main():
         real_main()
     except Exception as exc:
         failed_output_page(sys.exc_info()[1])
+
+# Ensure main() gets called when the script is executed directly
+if __name__ == "__main__":
+    main()
