@@ -9,7 +9,7 @@ license = { text = "Apache license" }
 dependencies = [
     "jira>=3.8.0",
     "importmonkey>=2.0.0",
-    "requests>=2.32.4",
+    "requests==2.31.0",
 ]
 readme = "README.md"
 requires-python = ">= 3.10"
