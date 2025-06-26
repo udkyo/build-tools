@@ -53,10 +53,6 @@ jobs:
         with:
           version: latest
 
-      - name: Install dependencies
-        run: |
-          cd build-tools/restriction
-          uv pip install -r requirements.lock
 
       - name: Run restriction checker
         id: branch-check
