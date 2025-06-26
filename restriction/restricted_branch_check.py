@@ -26,7 +26,7 @@ as Gerrit plugin would:
 
 When triggered via github action, the following environment variables must be set:
   GITHUB_BASE_REF   GITHUB_REPOSITORY   PR_NUMBER   GITHUB_TOKEN
-  JIRA_URL   JIRA_USER   JIRA_API_TOKEN
+  JIRA_URL   JIRA_USERNAME   JIRA_API_TOKEN
 """
 
 # Global variables to be populated by setup_environment()
@@ -93,7 +93,7 @@ def setup_environment():
         PR_NUMBER = os.getenv("PR_NUMBER")
         GH_TOKEN = os.getenv("GITHUB_TOKEN")
         JIRA_URL = os.getenv("JIRA_URL")
-        JIRA_USER = os.getenv("JIRA_USERNAME")
+        JIRA_USERNAME = os.getenv("JIRA_USERNAME")
         JIRA_TOKEN = os.getenv("JIRA_API_TOKEN")
 
         # For GitHub, we need to set PROJECT and BRANCH correctly
