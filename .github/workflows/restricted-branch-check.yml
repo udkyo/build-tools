@@ -44,8 +44,8 @@ jobs:
       - name: Checkout build-tools repo
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository }}
-          ref: master
+          repository: https://github.com/udkyo/build-tools
+          ref: main
           path: build-tools
 
       - name: Set up Python 3.10
