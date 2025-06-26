@@ -70,8 +70,7 @@ jobs:
           JIRA_USER: ${{ secrets.JIRA_USERNAME }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
         run: |
-          echo "status=success" >> $GITHUB_OUTPUT
-          (cd build-tools/restriction && rye run restricted-branch-check) || {
+          (cd build-tools/restriction && rye run restricted-branch-check && echo "status=success" >> $GITHUB_OUTPUT) || {
             echo "status=failure" >> $GITHUB_OUTPUT
             exit 1
           }
