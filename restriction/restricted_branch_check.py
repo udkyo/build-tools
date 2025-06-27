@@ -80,13 +80,13 @@ def setup_environment():
     """
     global TRIGGER, PROJECT, BRANCH, COMMIT_MSG, OUTPUT
 
-    if os.environ.get("GERRIT_PROJECT"):
+    if os.getenv("GERRIT_PROJECT"):
         TRIGGER = "GERRIT"
         PROJECT = os.environ["GERRIT_PROJECT"]
         BRANCH = os.environ["GERRIT_BRANCH"]
         COMMIT_MSG = base64.b64decode(
             os.environ["GERRIT_CHANGE_COMMIT_MESSAGE"]).decode("utf-8")
-    else:
+    elif os.getenv("GITHUB_REPOSITORY"):
         TRIGGER = "GITHUB"
         BASE_BRANCH = os.getenv("GITHUB_BASE_REF")
         REPO = os.getenv("GITHUB_REPOSITORY")
@@ -104,6 +104,18 @@ def setup_environment():
         except Exception as e:
             print(f"::error::Failed to fetch GitHub PR information: {str(e)}")
             sys.exit(1)
+    else:
+        print("Error: Required environment variables not set")
+        print("\nUsage:")
+        print("  This script checks if changes to a branch are restricted by release policy.")
+        print("\nRunning with Gerrit requires:")
+        print("  GERRIT_PROJECT, GERRIT_BRANCH, GERRIT_CHANGE_COMMIT_MESSAGE")
+        print("  GERRIT_CHANGE_URL, GERRIT_PATCHSET_NUMBER, GERRIT_EVENT_TYPE")
+        print("\nRunning with GitHub Actions requires:")
+        print("  GITHUB_BASE_REF, GITHUB_REPOSITORY, PR_NUMBER, GITHUB_TOKEN")
+        print("  JIRA_URL, JIRA_USERNAME, JIRA_API_TOKEN")
+        print("\nSee documentation for more details.")
+        sys.exit(1)
 
     # Initialize OUTPUT with globals
     OUTPUT.update(globals())
@@ -299,6 +311,7 @@ def failed_output_gerrit(exc_message):
         with open(os.path.join(tmpldir, "rest_failed.html.tmpl")) as tmplfile:
             tmpl = tmplfile.read()
         html.write(tmpl.format(EXC_MESSAGE=exc_message))
+
         print("\n\n\n*******\nFAILURE: {}\n*******\n\n\n".format(
             exc_message
         ))
@@ -444,11 +457,7 @@ def main():
     # is usefully printed by the program even if an unexpected
     # exception occurs; further refinement should check for
     # specific exceptions and handle appropriately as needed
-    try:
-        real_main()
-    except Exception as exc:
-        failed_output_page(sys.exc_info()[1])
-
-# Ensure main() gets called when the script is executed directly
-if __name__ == "__main__":
-    main()
+    # try:
+    real_main()
+    # except Exception as exc:
+    #     failed_output_page(sys.exc_info()[1])
