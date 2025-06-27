@@ -5,28 +5,120 @@ import base64
 import os
 import sys
 import urllib
+import requests
 
 from jira_util import connect_jira, get_tickets
 from importmonkey import add_path
-add_path("../build-from-manifest")
+
+# Use script directory for reliable path resolution
+script_dir = os.path.dirname(os.path.abspath(__file__))
+build_from_manifest_path = os.path.abspath(os.path.join(script_dir, "..", "build-from-manifest"))
+add_path(build_from_manifest_path)
 from manifest_util import scan_manifests
 
 """
-Intended to run as a Gerrit trigger. The following environment variables
-must be set as Gerrit plugin would:
+Intended to run as a Gerrit trigger or github action.
+
+When triggered via gerrit, the following environment variables must be set
+as Gerrit plugin would:
   GERRIT_PROJECT   GERRIT_BRANCH   GERRIT_CHANGE_COMMIT_MESSAGE
   GERRIT_CHANGE_URL   GERRIT_PATCHSET_NUMBER  GERRIT_EVENT_TYPE
-"""
-PROJECT = os.environ["GERRIT_PROJECT"]
-BRANCH = os.environ["GERRIT_BRANCH"]
-COMMIT_MSG = base64.b64decode(
-    os.environ["GERRIT_CHANGE_COMMIT_MESSAGE"]).decode("utf-8")
 
-# Values for outputting in HTML template (initialized with current globals)
-OUTPUT = globals().copy()
+When triggered via github action, the following environment variables must be set:
+  GITHUB_BASE_REF   GITHUB_REPOSITORY   PR_NUMBER   GITHUB_TOKEN
+  JIRA_URL   JIRA_USERNAME   JIRA_API_TOKEN
+"""
+
+# Global variables to be populated by setup_environment()
+TRIGGER = None
+PROJECT = None
+BRANCH = None
+COMMIT_MSG = None
+
+# Values for outputting in HTML template (initialized later)
+OUTPUT = {}
 
 # Name for output HTML file
 html_filename = "restricted.html"
+
+
+def format_release_with_version(release_name, version):
+    """
+    Format release name with version in parentheses if version is available
+    """
+    if version:
+        return f"{release_name} ({version})"
+    return release_name
+
+
+def get_github_pr_subject_line(repo, pr_number, token):
+    """
+    Fetch PR subject line
+    """
+    url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}"
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "Authorization": f"Bearer {token}"
+    }
+    print(f"Fetching PR information from: {url}")
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        print(f"API request failed with status {response.status_code}: {response.text}")
+        response.raise_for_status()
+
+    pr_data = response.json()
+    title = pr_data.get("title", "")
+
+    print(f"Using PR title: {title}")
+
+    return title
+
+
+def setup_environment():
+    """
+    Set up global variables based on the execution environment
+    """
+    global TRIGGER, PROJECT, BRANCH, COMMIT_MSG, OUTPUT
+
+    if os.getenv("GERRIT_PROJECT"):
+        TRIGGER = "GERRIT"
+        PROJECT = os.environ["GERRIT_PROJECT"]
+        BRANCH = os.environ["GERRIT_BRANCH"]
+        COMMIT_MSG = base64.b64decode(
+            os.environ["GERRIT_CHANGE_COMMIT_MESSAGE"]).decode("utf-8")
+    elif os.getenv("GITHUB_REPOSITORY"):
+        TRIGGER = "GITHUB"
+        BASE_BRANCH = os.getenv("GITHUB_BASE_REF")
+        REPO = os.getenv("GITHUB_REPOSITORY")
+        PR_NUMBER = os.getenv("PR_NUMBER")
+        GH_TOKEN = os.getenv("GITHUB_TOKEN")
+        JIRA_URL = os.getenv("JIRA_URL")
+        JIRA_USERNAME = os.getenv("JIRA_USERNAME")
+        JIRA_TOKEN = os.getenv("JIRA_API_TOKEN")
+
+        # For GitHub, we need to set PROJECT and BRANCH correctly
+        try:
+            PROJECT = REPO.split("/")[1]
+            BRANCH = BASE_BRANCH
+            COMMIT_MSG = get_github_pr_subject_line(REPO, PR_NUMBER, GH_TOKEN)
+        except Exception as e:
+            print(f"::error::Failed to fetch GitHub PR information: {str(e)}")
+            sys.exit(1)
+    else:
+        print("Error: Required environment variables not set")
+        print("\nUsage:")
+        print("  This script checks if changes to a branch are restricted by release policy.")
+        print("\nRunning with Gerrit requires:")
+        print("  GERRIT_PROJECT, GERRIT_BRANCH, GERRIT_CHANGE_COMMIT_MESSAGE")
+        print("  GERRIT_CHANGE_URL, GERRIT_PATCHSET_NUMBER, GERRIT_EVENT_TYPE")
+        print("\nRunning with GitHub Actions requires:")
+        print("  GITHUB_BASE_REF, GITHUB_REPOSITORY, PR_NUMBER, GITHUB_TOKEN")
+        print("  JIRA_URL, JIRA_USERNAME, JIRA_API_TOKEN")
+        print("\nSee documentation for more details.")
+        sys.exit(1)
+
+    # Initialize OUTPUT with globals
+    OUTPUT.update(globals())
 
 
 def check_branch_in_manifest(meta):
@@ -103,8 +195,8 @@ def validate_change_in_ticket(meta):
     Checks the commit message for a ticket name, and verifies it with the the
     approval ticket for the restricted manifest
     """
-    approval_ticket = meta.get("approval_ticket")
     global COMMIT_MSG
+    approval_ticket = meta.get("approval_ticket")
     # We require a ticket to be named either on the first line of the
     # commit message OR in an Ext-ref: footer line. For the time being
     # we don't enforce footers being at the end of the commit message;
@@ -127,18 +219,23 @@ def validate_change_in_ticket(meta):
             # Ok, this fixed ticket isn't approved in approval ticket
             # nor does it contain a label for bypassing this check.
             # Populate the OUTPUT map for the HTML and email templates.
+            # Need to format release_name with version for consistent output
+            release_name = meta.get("release_name")
+            version = meta.get("version", "")
+            formatted_release = format_release_with_version(release_name, version)
+
             OUTPUT["REASON"] = "ticket {} is not approved for {} " \
                 "(see approval ticket {})".format(
-                    tick, meta.get("release_name"), approval_ticket
+                    tick, formatted_release, approval_ticket
             )
             return False
     return True
 
 
-def output_report(meta):
+def output_report_gerrit(meta):
     """
-    Outputs report explaining why change was restricted, and exits
-    with non-0 return value
+    Outputs HTML report explaining why change was restricted for Gerrit,
+    and exits with non-0 return value
     """
     OUTPUT["RELEASE_NAME"] = meta.get("release_name")
     OUTPUT["APPROVAL_TICKET"] = meta.get("approval_ticket")
@@ -159,9 +256,54 @@ def output_report(meta):
         sys.exit(5)
 
 
-def failed_output_page(exc_message):
+def output_report_github(meta):
     """
-    Outputs page that gives the reason the program unexpectedly exited,
+    Outputs GitHub Actions friendly restriction report,
+    and exits with non-0 return value
+    """
+    release_name = meta.get("release_name")
+    version = meta.get("version", "")
+    formatted_release = format_release_with_version(release_name, version)
+
+    approval_ticket = meta.get("approval_ticket")
+    reason = OUTPUT.get("REASON")
+
+    # GitHub Actions specific error annotation
+    print(f"::error::RESTRICTED: {reason}")
+
+    # Human-readable output
+    print(f"❌ Pull request is restricted: {reason}")
+    print(f"   Release: {formatted_release}")
+    print(f"   Approval ticket: {approval_ticket}")
+
+    # Handle specific cases with helpful messages
+    if reason == "the commit message does not name a ticket":
+        print(f"   Please include a JIRA ticket reference in the PR title.")
+    elif "ticket" in reason:
+        # Try to extract ticket key from reason message
+        # Format: "ticket ABC-123 is not approved for..."
+        parts = reason.split()
+        if len(parts) > 1 and "-" in parts[1]:
+            ticket_key = parts[1]
+            print(f"   Please link {ticket_key} in the approval ticket {approval_ticket} before merging.")
+
+    sys.exit(5)
+
+
+def output_report(meta):
+    """
+    Outputs report explaining why change was restricted based on trigger environment,
+    and exits with non-0 return value
+    """
+    if TRIGGER == "GERRIT":
+        output_report_gerrit(meta)
+    else:
+        output_report_github(meta)
+
+
+def failed_output_gerrit(exc_message):
+    """
+    Outputs HTML page that gives the reason the program unexpectedly exited for Gerrit,
     and exits with a non-0 return value
     """
     tmpldir = os.path.dirname(os.path.abspath(__file__))
@@ -169,20 +311,62 @@ def failed_output_page(exc_message):
         with open(os.path.join(tmpldir, "rest_failed.html.tmpl")) as tmplfile:
             tmpl = tmplfile.read()
         html.write(tmpl.format(EXC_MESSAGE=exc_message))
+
         print("\n\n\n*******\nFAILURE: {}\n*******\n\n\n".format(
             exc_message
         ))
         sys.exit(6)
 
 
+def failed_output_github(exc_message):
+    """
+    Outputs GitHub Actions friendly failure message,
+    and exits with a non-0 return value
+    """
+    print(f"::error::FAILURE: {exc_message}")
+    print(f"❌ The restriction check encountered an error: {exc_message}")
+    sys.exit(6)
+
+
+def failed_output_page(exc_message):
+    """
+    Outputs failure message based on the trigger environment (Gerrit or GitHub Actions),
+    and exits with a non-0 return value
+    """
+    if TRIGGER == "GERRIT":
+        failed_output_gerrit(exc_message)
+    else:
+        failed_output_github(exc_message)
+
+
 def real_main():
+    """
+    Main function that performs the actual restriction check
+    """
+    # Set up environment variables first
+    setup_environment()
+
     # Command-line args
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--manifest-project", type=str,
                         default="ssh://git@github.com/couchbase/manifest",
                         help="Alternate Git project for manifest")
     args = parser.parse_args()
-    manifest_project = args.manifest_project
+
+    # In GitHub Actions mode, look for the manifest repo in the workspace
+    if TRIGGER == "GITHUB":
+        # Check relative to current directory
+        local_manifest = os.path.abspath(os.path.join("..", "..", "manifest"))
+        if os.path.isdir(local_manifest):
+            print(f"Using manifest repository: {local_manifest}")
+            manifest_project = local_manifest
+        else:
+            print(f"::error::Fatal error: Manifest repository not found at {local_manifest}")
+            print(f"❌ Expected manifest repository at {local_manifest} but directory doesn't exist.")
+            sys.exit(1)
+    else:
+        manifest_project = args.manifest_project
+
     # Clean out report file
     if os.path.exists(html_filename):
         os.remove(html_filename)
@@ -242,22 +426,33 @@ def real_main():
     # Output "all clear" message if no restricted branches were checked,
     # or if they were checked and approved.
     if restricted_manifests:
-        print("\n\n\n*********\nAPPROVED: Commit is approved for all "
-              "restricted manifests\n*********\n\n\n")
+        if TRIGGER == "GERRIT":
+            print("\n\n\n*********\nAPPROVED: Commit is approved for all "
+                  "restricted manifests\n*********\n\n\n")
+        else:
+            print("::notice::APPROVED: Pull request is approved for all restricted manifests")
+            print("✅ All checks passed. All JIRA tickets referenced in commits are approved for all restricted manifests.")
     else:
-        # This is the common case where the change was not to any restricted
-        # branches. Normally we want Jenkins to skip voting entirely in this
-        # case, to prevent excessive Gerrit comment spam. We indicate this by
-        # outputting the word "SILENT". However, if this check was triggered
-        # by an explicit "check approval" Gerrit comment, we need to ensure
-        # it is not silent in any case.
-        silent = " (SILENT)"
-        if os.environ.get("GERRIT_EVENT_TYPE") == "comment-added":
-            silent = ""
-        print("\n\n\n*********\nUNRESTRICTED{}: Branch is in no restricted "
-              "manifests\n*********\n\n\n".format(silent))
+        if TRIGGER == "GERRIT":
+            # This is the common case where the change was not to any restricted
+            # branches. Normally we want Jenkins to skip voting entirely in this
+            # case, to prevent excessive Gerrit comment spam. We indicate this by
+            # outputting the word "SILENT". However, if this check was triggered
+            # by an explicit "check approval" Gerrit comment, we need to ensure
+            # it is not silent in any case.
+            silent = " (SILENT)"
+            if os.environ.get("GERRIT_EVENT_TYPE") == "comment-added":
+                silent = ""
+            print("\n\n\n*********\nUNRESTRICTED{}: Branch is in no restricted "
+                  "manifests\n*********\n\n\n".format(silent))
+        else:
+            print("::notice::UNRESTRICTED: Branch is in no restricted manifests")
+            print("✅ Branch is not part of any restricted release manifest. Skipping extra checks.")
 
 def main():
+    """
+    Entry point with error handling
+    """
     # This is a MAJOR hack right now to try to ensure something
     # is usefully printed by the program even if an unexpected
     # exception occurs; further refinement should check for
