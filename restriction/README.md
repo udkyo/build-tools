@@ -36,7 +36,7 @@ When running in GitHub Actions, the following environment variables must be set:
 - `PR_NUMBER` - The PR number to check
 - `JIRA_URL` - URL of the JIRA instance
 - `JIRA_USER` - JIRA username
-- `JIRA_API_PASS` - JIRA API token
+- `JIRA_API_TOKEN` - JIRA API token
 
 To enable this on a new repo, set up the JIRA secrets at repo or org level
 and add the following `.github/workflows/restricted-branch-check.yml`:
