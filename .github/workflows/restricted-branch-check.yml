@@ -65,7 +65,7 @@ jobs:
           JIRA_USERNAME: ${{ secrets.JIRA_USERNAME }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
         run: |
-          (cd build-tools/restriction && uv run restricted_branch_check.py && (echo "status=success" >> $GITHUB_OUTPUT)) || {
+          (cd build-tools/restriction && uv run restricted-branch-check && (echo "status=success" >> $GITHUB_OUTPUT)) || {
             echo "status=failure" >> $GITHUB_OUTPUT
             exit 1
           }
