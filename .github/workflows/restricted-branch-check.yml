@@ -85,16 +85,18 @@ jobs:
             exit 1
           fi
 
-      - name: Validate org is in allowlist
+      - name: Validate target repository organization
         run: |
-          org_part=$(echo "${{ inputs.head_repo }}" | cut -d'/' -f1)
-          if [[ ! " $ALLOWED_ORGS " =~ " $org_part " ]]; then
-            echo "::error::Organization $org_part is not in the allowlist"
-            echo "Allowed organizations: $ALLOWED_ORGS"
-            echo "::notice::SECURITY_AUDIT: Unauthorized organization access attempt: $org_part"
+          # Validate the target repository organization
+          target_org=$(echo "${{ github.repository }}" | cut -d'/' -f1)
+          if [[ ! " $ALLOWED_ORGS " =~ " $target_org " ]]; then
+            echo "::error::Target repository organization '$target_org' is not in the allowlist"
+            echo "This workflow can only be used for repositories in allowed organizations: $ALLOWED_ORGS"
+            echo "::notice::SECURITY_AUDIT: Unauthorized target repository access attempt: $target_org"
             exit 1
           fi
-          echo "::notice::SECURITY_AUDIT: Organization validation passed: $org_part"
+          echo "::notice::SECURITY_AUDIT: Target repository organization validation passed: $target_org"
+          echo "::notice::Repository validation: Protecting ${{ github.repository }} (source: ${{ inputs.head_repo }})"
 
       - name: Validate environment setup
         env:
@@ -168,8 +170,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: udkyo/build-tools
-          # Use action_ref to ensure version consistency between workflow and script
-          ref: gha-restriction-checker 
+          ref: gha-restriction-checker
           path: build-tools
           fetch-depth: 1
 
@@ -190,14 +191,14 @@ jobs:
         id: branch-check
         env:
           GITHUB_BASE_REF: ${{ github.base_ref }}
-          GITHUB_REPOSITORY: ${{ inputs.head_repo }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ inputs.pr_number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JIRA_URL: ${{ secrets.JIRA_URL }}
           JIRA_USERNAME: ${{ secrets.JIRA_USERNAME }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
         run: |
-          echo "::notice::SECURITY_AUDIT: Starting restriction check for repo=${{ inputs.head_repo }} pr=${{ inputs.pr_number }} base_ref=${{ github.base_ref }}"
+          echo "::notice::RESTRICTION_CHECK: Starting restriction check for target=${{ github.repository }} pr=${{ inputs.pr_number }} base_ref=${{ github.base_ref }} (source: ${{ inputs.head_repo }})"
 
           # Secure validation of environment variables without exposing sensitive values
           validation_failed=false
@@ -248,10 +249,10 @@ jobs:
 
           (cd build-tools/restriction && uv run restricted-branch-check && (echo "status=success" >> $GITHUB_OUTPUT)) || {
             echo "status=failure" >> $GITHUB_OUTPUT
-            echo "::notice::SECURITY_AUDIT: Restriction check failed for repo=${{ inputs.head_repo }} pr=${{ inputs.pr_number }}"
+            echo "::notice::RESTRICTION_ENFORCEMENT: PR blocked due to restriction policy for target=${{ github.repository }} pr=${{ inputs.pr_number }}"
             exit 1
           }
-          echo "::notice::SECURITY_AUDIT: Restriction check completed successfully for repo=${{ inputs.head_repo }} pr=${{ inputs.pr_number }}"
+          echo "::notice::RESTRICTION_CHECK: Completed successfully - no restrictions apply for target=${{ github.repository }} pr=${{ inputs.pr_number }}"
 
       - name: Set final status
         if: always()
@@ -259,10 +260,10 @@ jobs:
         run: |
           if [[ "${{ job.status }}" == "success" ]]; then
             echo "status=success" >> $GITHUB_OUTPUT
-            echo "::notice::SECURITY_AUDIT: Final status set to success for repo=${{ inputs.head_repo }} pr=${{ inputs.pr_number }}"
+            echo "::notice::WORKFLOW_STATUS: Restriction check passed for target=${{ github.repository }} pr=${{ inputs.pr_number }}"
           else
             echo "status=failure" >> $GITHUB_OUTPUT
-            echo "::notice::SECURITY_AUDIT: Final status set to failure for repo=${{ inputs.head_repo }} pr=${{ inputs.pr_number }}"
+            echo "::notice::WORKFLOW_STATUS: Restriction check failed for target=${{ github.repository }} pr=${{ inputs.pr_number }}"
           fi
 
       - name: Generate summary
