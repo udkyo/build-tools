@@ -310,6 +310,25 @@ def output_report_github(meta):
     elif "ticket" in safe_reason and "not approved" in safe_reason:
         print(f"   Please ensure the ticket is linked in the approval ticket {safe_approval} before merging.")
 
+    # Output structured information for GitHub Actions summary
+    github_output_file = os.environ.get("GITHUB_OUTPUT")
+    if github_output_file:
+        try:
+            with open(github_output_file, "a") as f:
+                f.write(f"restriction_reason={safe_reason}\n")
+                f.write(f"restriction_release={safe_release}\n")
+                f.write(f"restriction_approval_ticket={safe_approval}\n")
+
+                # Determine the type of restriction for better messaging
+                if "commit message does not name a ticket" in safe_reason:
+                    f.write("restriction_type=missing_ticket\n")
+                elif "ticket" in safe_reason and "not approved" in safe_reason:
+                    f.write("restriction_type=unapproved_ticket\n")
+                else:
+                    f.write("restriction_type=other\n")
+        except Exception as e:
+            print(f"::warning::Failed to write to GITHUB_OUTPUT: {e}")
+
     sys.exit(5)
 
 
@@ -464,6 +483,16 @@ def real_main():
         else:
             print("::notice::APPROVED: Pull request is approved for all restricted manifests")
             print("✅ All checks passed. All JIRA tickets referenced in commits are approved for all restricted manifests.")
+
+            # Output success information for GitHub Actions summary
+            github_output_file = os.environ.get("GITHUB_OUTPUT")
+            if github_output_file:
+                try:
+                    with open(github_output_file, "a") as f:
+                        f.write(f"checked_manifests={','.join(restricted_manifests)}\n")
+                        f.write("check_result=approved\n")
+                except Exception as e:
+                    print(f"::warning::Failed to write success info to GITHUB_OUTPUT: {e}")
     else:
         if TRIGGER == "GERRIT":
             # This is the common case where the change was not to any restricted
@@ -480,6 +509,17 @@ def real_main():
         else:
             print("::notice::UNRESTRICTED: Branch is in no restricted manifests")
             print("✅ Branch is not part of any restricted release manifest. Skipping extra checks.")
+
+            # Output success information for GitHub Actions summary
+            github_output_file = os.environ.get("GITHUB_OUTPUT")
+            if github_output_file:
+                try:
+                    with open(github_output_file, "a") as f:
+                        f.write(f"checked_branch={BRANCH}\n")
+                        f.write(f"checked_project={PROJECT}\n")
+                        f.write("check_result=unrestricted\n")
+                except Exception as e:
+                    print(f"::warning::Failed to write success info to GITHUB_OUTPUT: {e}")
 
 def main():
     """

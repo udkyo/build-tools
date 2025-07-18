@@ -169,7 +169,7 @@ jobs:
       - name: Checkout build-tools repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          repository: udkyo/build-tools
+          repository: couchbase/build-tools
           ref: gha-restriction-checker
           path: build-tools
           fetch-depth: 1
@@ -271,8 +271,60 @@ jobs:
         run: |
           if [[ "${{ steps.final-status.outputs.status }}" == "failure" ]]; then
             echo "## ❌ Restricted Branch Check Failed" >> $GITHUB_STEP_SUMMARY
-            echo "This PR cannot be merged until all the restricted branch requirements are met or the workflow is fixed." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Check if we have detailed restriction information
+            if [[ -n "${{ steps.branch-check.outputs.restriction_reason }}" ]]; then
+              echo "**Reason:** ${{ steps.branch-check.outputs.restriction_reason }}" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+
+              if [[ -n "${{ steps.branch-check.outputs.restriction_release }}" ]]; then
+                echo "**Release:** ${{ steps.branch-check.outputs.restriction_release }}" >> $GITHUB_STEP_SUMMARY
+              fi
+
+              if [[ -n "${{ steps.branch-check.outputs.restriction_approval_ticket }}" ]]; then
+                echo "**Approval Ticket:** [${{ steps.branch-check.outputs.restriction_approval_ticket }}](https://issues.couchbase.com/browse/${{ steps.branch-check.outputs.restriction_approval_ticket }})" >> $GITHUB_STEP_SUMMARY
+              fi
+
+              echo "" >> $GITHUB_STEP_SUMMARY
+
+              # Add specific guidance based on restriction type
+              if [[ "${{ steps.branch-check.outputs.restriction_type }}" == "missing_ticket" ]]; then
+                echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+                echo "- Add a JIRA ticket reference to your PR title (e.g., 'CBD-1234: Fix important bug')" >> $GITHUB_STEP_SUMMARY
+                echo "- The ticket should be approved for this release" >> $GITHUB_STEP_SUMMARY
+              elif [[ "${{ steps.branch-check.outputs.restriction_type }}" == "unapproved_ticket" ]]; then
+                echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+                echo "- Ensure your JIRA ticket is linked to the approval ticket [${{ steps.branch-check.outputs.restriction_approval_ticket }}](https://issues.couchbase.com/browse/${{ steps.branch-check.outputs.restriction_approval_ticket }})" >> $GITHUB_STEP_SUMMARY
+                echo "- Contact Product Management if you believe this change should be approved" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+                echo "- Review the restriction requirements for this release branch" >> $GITHUB_STEP_SUMMARY
+                echo "- Contact the Build Team if you need assistance" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "This PR cannot be merged until all the restricted branch requirements are met or the workflow is fixed." >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "Check the workflow logs for more details." >> $GITHUB_STEP_SUMMARY
+            fi
           else
             echo "## ✅ Restricted Branch Check Passed" >> $GITHUB_STEP_SUMMARY
-            echo "All required approvals are in place for the target branch." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Show what was actually checked
+            if [[ "${{ steps.branch-check.outputs.check_result }}" == "approved" ]]; then
+              echo "All JIRA tickets referenced in commits are approved for all restricted manifests." >> $GITHUB_STEP_SUMMARY
+              if [[ -n "${{ steps.branch-check.outputs.checked_manifests }}" ]]; then
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "**Checked manifests:** ${{ steps.branch-check.outputs.checked_manifests }}" >> $GITHUB_STEP_SUMMARY
+              fi
+            elif [[ "${{ steps.branch-check.outputs.check_result }}" == "unrestricted" ]]; then
+              echo "This branch is not part of any restricted release manifest." >> $GITHUB_STEP_SUMMARY
+              if [[ -n "${{ steps.branch-check.outputs.checked_project }}" && -n "${{ steps.branch-check.outputs.checked_branch }}" ]]; then
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "**Checked:** ${{ steps.branch-check.outputs.checked_project }}/${{ steps.branch-check.outputs.checked_branch }}" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "All required approvals are in place for the target branch." >> $GITHUB_STEP_SUMMARY
+            fi
           fi
