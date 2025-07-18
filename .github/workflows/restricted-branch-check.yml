@@ -167,7 +167,7 @@ jobs:
       - name: Checkout build-tools repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          repository: couchbase/build-tools
+          repository: udkyo/build-tools
           # Use action_ref to ensure version consistency between workflow and script
           ref: ${{ github.action_ref || 'master' }}
           path: build-tools
