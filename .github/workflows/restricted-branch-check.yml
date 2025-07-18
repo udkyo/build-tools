@@ -169,7 +169,7 @@ jobs:
         with:
           repository: udkyo/build-tools
           # Use action_ref to ensure version consistency between workflow and script
-          ref: ${{ github.action_ref || 'master' }}
+          ref: master
           path: build-tools
           fetch-depth: 1
 
