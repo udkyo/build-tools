@@ -8,7 +8,6 @@ authors = [
 license = { text = "Apache license" }
 dependencies = [
     "jira>=3.8.0",
-    "importmonkey>=2.0.0",
     "requests>=2.32.2",
 ]
 readme = "README.md"

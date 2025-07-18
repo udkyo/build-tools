@@ -2,18 +2,20 @@
 
 import argparse
 import base64
+import html
 import os
+import re
 import sys
 import urllib
 import requests
+import time
 
 from jira_util import connect_jira, get_tickets
-from importmonkey import add_path
 
-# Use script directory for reliable path resolution
 script_dir = os.path.dirname(os.path.abspath(__file__))
 build_from_manifest_path = os.path.abspath(os.path.join(script_dir, "..", "build-from-manifest"))
-add_path(build_from_manifest_path)
+if build_from_manifest_path not in sys.path:
+    sys.path.insert(0, build_from_manifest_path)
 from manifest_util import scan_manifests
 
 """
@@ -42,6 +44,17 @@ OUTPUT = {}
 html_filename = "restricted.html"
 
 
+def sanitize_for_template(value):
+    """
+    Sanitize user input for safe template rendering to prevent injection attacks
+    """
+    if value is None:
+        return ""
+    # HTML escape the value and limit length to prevent DoS
+    sanitized = html.escape(str(value)[:10000])
+    return sanitized
+
+
 def format_release_with_version(release_name, version):
     """
     Format release name with version in parentheses if version is available
@@ -60,18 +73,30 @@ def get_github_pr_subject_line(repo, pr_number, token):
         "Accept": "application/vnd.github.v3+json",
         "Authorization": f"Bearer {token}"
     }
-    print(f"Fetching PR information from: {url}")
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
-        print(f"API request failed with status {response.status_code}: {response.text}")
-        response.raise_for_status()
 
-    pr_data = response.json()
-    title = pr_data.get("title", "")
+    try:
+        response = requests.get(url, headers=headers, timeout=30)
+        if response.status_code == 429:  # Rate limited
+            retry_after = int(response.headers.get('Retry-After', 60))
+            print(f"Rate limited, waiting {retry_after} seconds")
+            time.sleep(retry_after)
+            response = requests.get(url, headers=headers, timeout=30)
 
-    print(f"Using PR title: {title}")
+        if response.status_code != 200:
+            print(f"::error::Failed to fetch PR information (status: {response.status_code})")
+            response.raise_for_status()
 
-    return title
+        pr_data = response.json()
+        title = pr_data.get("title", "")
+
+        # Limit title length to prevent abuse
+        if len(title) > 100:
+            title = title[:100] + "..."
+
+        return title
+    except requests.exceptions.RequestException as e:
+        print(f"::error::Network error fetching PR information")
+        raise RuntimeError("Failed to fetch PR information") from e
 
 
 def setup_environment():
@@ -102,7 +127,7 @@ def setup_environment():
             BRANCH = BASE_BRANCH
             COMMIT_MSG = get_github_pr_subject_line(REPO, PR_NUMBER, GH_TOKEN)
         except Exception as e:
-            print(f"::error::Failed to fetch GitHub PR information: {str(e)}")
+            print(f"::error::Failed to fetch GitHub PR information")
             sys.exit(1)
     else:
         print("Error: Required environment variables not set")
@@ -126,6 +151,7 @@ def check_branch_in_manifest(meta):
     Returns true if the PRODUCT/BRANCH are listed in the named manifest
     """
     print(f"Checking manifest {meta['manifest_path']}")
+
     manifest_et = meta["_manifest"]
     project_et = manifest_et.find("./project[@name='{}']".format(PROJECT))
     if project_et is None:
@@ -268,24 +294,21 @@ def output_report_github(meta):
     approval_ticket = meta.get("approval_ticket")
     reason = OUTPUT.get("REASON")
 
-    # GitHub Actions specific error annotation
-    print(f"::error::RESTRICTED: {reason}")
+    safe_reason = sanitize_for_template(reason)
+    safe_release = sanitize_for_template(formatted_release)
+    safe_approval = sanitize_for_template(approval_ticket)
 
-    # Human-readable output
-    print(f"❌ Pull request is restricted: {reason}")
-    print(f"   Release: {formatted_release}")
-    print(f"   Approval ticket: {approval_ticket}")
+    print(f"::error::RESTRICTED: {safe_reason}")
+
+    print(f"❌ Pull request is restricted: {safe_reason}")
+    print(f"   Release: {safe_release}")
+    print(f"   Approval ticket: {safe_approval}")
 
     # Handle specific cases with helpful messages
-    if reason == "the commit message does not name a ticket":
+    if "commit message does not name a ticket" in safe_reason:
         print(f"   Please include a JIRA ticket reference in the PR title.")
-    elif "ticket" in reason:
-        # Try to extract ticket key from reason message
-        # Format: "ticket ABC-123 is not approved for..."
-        parts = reason.split()
-        if len(parts) > 1 and "-" in parts[1]:
-            ticket_key = parts[1]
-            print(f"   Please link {ticket_key} in the approval ticket {approval_ticket} before merging.")
+    elif "ticket" in safe_reason and "not approved" in safe_reason:
+        print(f"   Please ensure the ticket is linked in the approval ticket {safe_approval} before merging.")
 
     sys.exit(5)
 
@@ -323,8 +346,9 @@ def failed_output_github(exc_message):
     Outputs GitHub Actions friendly failure message,
     and exits with a non-0 return value
     """
-    print(f"::error::FAILURE: {exc_message}")
-    print(f"❌ The restriction check encountered an error: {exc_message}")
+    safe_message = sanitize_for_template(exc_message)
+    print(f"::error::FAILURE: Restriction check failed")
+    print(f"❌ restricted branch check encountered an error. Check logs for details.")
     sys.exit(6)
 
 
@@ -355,8 +379,16 @@ def real_main():
 
     # In GitHub Actions mode, look for the manifest repo in the workspace
     if TRIGGER == "GITHUB":
-        # Check relative to current directory
-        local_manifest = os.path.abspath(os.path.join("..", "..", "manifest"))
+        workspace_root = os.environ.get("GITHUB_WORKSPACE", os.getcwd())
+        expected_manifest = os.path.join(workspace_root, "manifest")
+        local_manifest = os.path.realpath(expected_manifest)
+
+        # Ensure the resolved path is within the expected workspace
+        workspace_real = os.path.realpath(workspace_root)
+        if not local_manifest.startswith(workspace_real):
+            print(f"::error::Security violation: Manifest path outside workspace")
+            sys.exit(1)
+
         if os.path.isdir(local_manifest):
             print(f"Using manifest repository: {local_manifest}")
             manifest_project = local_manifest
@@ -461,3 +493,6 @@ def main():
         real_main()
     except Exception as exc:
         failed_output_page(sys.exc_info()[1])
+
+if __name__ == "__main__":
+    main()

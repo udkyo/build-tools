@@ -3,10 +3,6 @@ name: Restricted Branch Check
 on:
   workflow_call:
     inputs:
-      head_ref:
-        description: 'PR head branch'
-        required: true
-        type: string
       head_repo:
         description: 'PR head repo'
         required: true
@@ -28,17 +24,152 @@ jobs:
   restricted-branch-check:
     name: Check Branch Restrictions
     runs-on: ubuntu-latest
+    env:
+      ALLOWED_ORGS: "couchbase couchbasedeps couchbaselabs"
     permissions:
       contents: read
       pull-requests: read
     outputs:
       status: ${{ steps.final-status.outputs.status }}
     steps:
+      - name: Validate inputs
+        run: |
+          # Validate head_repo length
+          REPO_INPUT="${{ inputs.head_repo }}"
+          if [[ ${#REPO_INPUT} -gt 100 ]]; then
+            echo "::error::Repository name too long (max 100 characters)"
+            exit 1
+          fi
+
+          # Validate repo name - org cannot contain dots/underscores, repo more restrictive
+          if [[ ! "$REPO_INPUT" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,38}[a-zA-Z0-9])?/[a-zA-Z0-9]([a-zA-Z0-9._-]{0,98}[a-zA-Z0-9])?$ ]]; then
+            echo "::error::Invalid repository format"
+            echo "Repository must be in format 'org/repo' with safe characters only"
+            echo "Organization: alphanumeric and hyphens only, 2-40 chars"
+            echo "Repository: alphanumeric, dots, underscores, hyphens only, 2-100 chars"
+            exit 1
+          fi
+
+          # Validate PR number is numeric
+          PR_INPUT="${{ inputs.pr_number }}"
+          if [[ ! "$PR_INPUT" =~ ^[0-9]+$ ]]; then
+            echo "::error::PR number must be numeric only"
+            exit 1
+          fi
+
+          # Bound check PR number
+          if (( PR_INPUT <= 0 || PR_INPUT > 50000 )); then
+            echo "::error::PR number out of reasonable range (1-50000)"
+            exit 1
+          fi
+
+          # Check base ref length
+          BASE_REF="${{ github.base_ref }}"
+          if [[ ${#BASE_REF} -gt 100 ]]; then
+            echo "::error::Base ref too long (max 100 characters)"
+            exit 1
+          fi
+
+          # Branch name validation
+          if [[ ! "$BASE_REF" =~ ^[a-zA-Z0-9]([a-zA-Z0-9._/-]{0,98}[a-zA-Z0-9])?$ ]] || \
+             [[ "$BASE_REF" =~ (\.\.|//|\$|\`|\\|\'|\"|;|\||\&|\<|\>|\(|\)|\[|\]|\{|\}|\*|\?|\~) ]]; then
+            echo "::error::Invalid base ref format"
+            echo "Base ref must be a valid branch name (alphanumeric, dots, underscores, hyphens, slashes only)"
+            echo "No path traversal sequences or shell metacharacters allowed"
+            exit 1
+          fi
+
+          # Check branch name for common dangerous patterns
+          if [[ "$BASE_REF" == *".."* ]] || [[ "$BASE_REF" == *"//"* ]] || [[ "$BASE_REF" == "."* ]] || [[ "$BASE_REF" == *"~"* ]]; then
+            echo "::error::Base ref contains dangerous patterns"
+            exit 1
+          fi
+
+      - name: Validate org is in allowlist
+        run: |
+          org_part=$(echo "${{ inputs.head_repo }}" | cut -d'/' -f1)
+          if [[ ! " $ALLOWED_ORGS " =~ " $org_part " ]]; then
+            echo "::error::Organization $org_part is not in the allowlist"
+            echo "Allowed organizations: $ALLOWED_ORGS"
+            echo "::notice::SECURITY_AUDIT: Unauthorized organization access attempt: $org_part"
+            exit 1
+          fi
+          echo "::notice::SECURITY_AUDIT: Organization validation passed: $org_part"
+
+      - name: Validate environment setup
+        env:
+          JIRA_URL: ${{ secrets.JIRA_URL }}
+          JIRA_USERNAME: ${{ secrets.JIRA_USERNAME }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+        run: |
+          # Validate secrets
+          validation_failed=false
+
+          if [[ -z "$JIRA_URL" ]]; then
+            echo "::error::JIRA_URL secret is required but not provided"
+            validation_failed=true
+          fi
+
+          if [[ -z "$JIRA_USERNAME" ]]; then
+            echo "::error::JIRA_USERNAME secret is required but not provided"
+            validation_failed=true
+          fi
+
+          if [[ -z "$JIRA_API_TOKEN" ]]; then
+            echo "::error::JIRA_API_TOKEN secret is required but not provided"
+            validation_failed=true
+          fi
+
+          # Additional validation: check secret format without exposing values
+          if [[ -n "$JIRA_URL" ]] && [[ ! "$JIRA_URL" =~ ^https?:// ]]; then
+            echo "::error::JIRA_URL must be a valid HTTP/HTTPS URL"
+            validation_failed=true
+          fi
+
+          if [[ -n "$JIRA_USERNAME" ]] && [[ ${#JIRA_USERNAME} -lt 1 || ${#JIRA_USERNAME} -gt 100 ]]; then
+            echo "::error::JIRA_USERNAME must be between 1-100 characters"
+            validation_failed=true
+          fi
+
+          if [[ -n "$JIRA_API_TOKEN" ]] && [[ ${#JIRA_API_TOKEN} -lt 10 || ${#JIRA_API_TOKEN} -gt 200 ]]; then
+            echo "::error::JIRA_API_TOKEN length is invalid"
+            validation_failed=true
+          fi
+
+          if [[ "$validation_failed" == "true" ]]; then
+            echo "::error::Environment validation failed - check secrets configuration"
+            exit 1
+          fi
+
+          echo "::notice::Environment validation passed - all secrets are properly configured"
+
+      - name: Verify repository accessibility
+        env:
+          REPO_NAME: ${{ inputs.head_repo }}
+        run: |
+          echo "::notice::SECURITY_AUDIT: Verifying repository accessibility"
+
+          # Additional security validation for repository name
+          if [[ "$REPO_NAME" =~ [[:space:]] ]]; then
+            echo "::error::Repository name contains invalid whitespace characters"
+            exit 1
+          fi
+
+          # Verify repository exists and is accessible with timeout
+          echo "::debug::Attempting to verify repository access (with 30s timeout)"
+          if ! timeout 30s git ls-remote --exit-code --heads "https://github.com/${REPO_NAME}" > /dev/null 2>&1; then
+            echo "::error::Cannot access repository or repository does not exist"
+            echo "::notice::SECURITY_AUDIT: Repository access failed"
+            exit 1
+          fi
+          echo "::notice::SECURITY_AUDIT: Repository access verified successfully"
+
       - name: Checkout build-tools repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          repository: udkyo/build-tools
-          ref: gha-restriction-checker
+          repository: couchbase/build-tools
+          # Use action_ref to ensure version consistency between workflow and script
+          ref: ${{ github.action_ref || 'master' }}
           path: build-tools
           fetch-depth: 1
 
@@ -46,6 +177,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: couchbase/manifest
+          ref: master
           path: manifest
           fetch-depth: 1
 
@@ -65,10 +197,61 @@ jobs:
           JIRA_USERNAME: ${{ secrets.JIRA_USERNAME }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
         run: |
+          echo "::notice::SECURITY_AUDIT: Starting restriction check for repo=${{ inputs.head_repo }} pr=${{ inputs.pr_number }} base_ref=${{ github.base_ref }}"
+
+          # Secure validation of environment variables without exposing sensitive values
+          validation_failed=false
+
+          # Validate non-sensitive variables
+          if [[ -z "$GITHUB_BASE_REF" ]]; then
+            echo "::error::GITHUB_BASE_REF environment variable is not set"
+            validation_failed=true
+          fi
+
+          if [[ -z "$GITHUB_REPOSITORY" ]]; then
+            echo "::error::GITHUB_REPOSITORY environment variable is not set"
+            validation_failed=true
+          fi
+
+          if [[ -z "$PR_NUMBER" ]]; then
+            echo "::error::PR_NUMBER environment variable is not set"
+            validation_failed=true
+          fi
+
+          # Validate sensitive variables exist without exposing values
+          if [[ -z "$GITHUB_TOKEN" ]]; then
+            echo "::error::GITHUB_TOKEN is not available"
+            validation_failed=true
+          fi
+
+          if [[ -z "$JIRA_URL" ]]; then
+            echo "::error::JIRA_URL is not available"
+            validation_failed=true
+          fi
+
+          if [[ -z "$JIRA_USERNAME" ]]; then
+            echo "::error::JIRA_USERNAME is not available"
+            validation_failed=true
+          fi
+
+          if [[ -z "$JIRA_API_TOKEN" ]]; then
+            echo "::error::JIRA_API_TOKEN is not available"
+            validation_failed=true
+          fi
+
+          if [[ "$validation_failed" == "true" ]]; then
+            echo "::error::Environment validation failed - required variables missing"
+            exit 1
+          fi
+
+          echo "::notice::All required environment variables are properly configured"
+
           (cd build-tools/restriction && uv run restricted-branch-check && (echo "status=success" >> $GITHUB_OUTPUT)) || {
             echo "status=failure" >> $GITHUB_OUTPUT
+            echo "::notice::SECURITY_AUDIT: Restriction check failed for repo=${{ inputs.head_repo }} pr=${{ inputs.pr_number }}"
             exit 1
           }
+          echo "::notice::SECURITY_AUDIT: Restriction check completed successfully for repo=${{ inputs.head_repo }} pr=${{ inputs.pr_number }}"
 
       - name: Set final status
         if: always()
@@ -76,8 +259,10 @@ jobs:
         run: |
           if [[ "${{ job.status }}" == "success" ]]; then
             echo "status=success" >> $GITHUB_OUTPUT
+            echo "::notice::SECURITY_AUDIT: Final status set to success for repo=${{ inputs.head_repo }} pr=${{ inputs.pr_number }}"
           else
             echo "status=failure" >> $GITHUB_OUTPUT
+            echo "::notice::SECURITY_AUDIT: Final status set to failure for repo=${{ inputs.head_repo }} pr=${{ inputs.pr_number }}"
           fi
 
       - name: Generate summary
