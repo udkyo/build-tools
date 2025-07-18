@@ -25,7 +25,7 @@ jobs:
     name: Check Branch Restrictions
     runs-on: ubuntu-latest
     env:
-      ALLOWED_ORGS: "couchbase couchbasedeps couchbaselabs"
+      ALLOWED_ORGS: "udkyo couchbase couchbasedeps couchbaselabs"
     permissions:
       contents: read
       pull-requests: read
