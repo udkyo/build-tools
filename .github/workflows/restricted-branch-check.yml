@@ -7,6 +7,10 @@ on:
         description: 'PR number'
         required: true
         type: string
+      pr_title:
+        description: 'PR title for ticket extraction'
+        required: true
+        type: string
     secrets:
       JIRA_URL: { required: true }
       JIRA_USERNAME: { required: true }
@@ -152,6 +156,7 @@ jobs:
           GITHUB_BASE_REF: ${{ github.base_ref }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ inputs.pr_number }}
+          PR_TITLE: ${{ inputs.pr_title }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JIRA_URL: ${{ secrets.JIRA_URL }}
           JIRA_USERNAME: ${{ secrets.JIRA_USERNAME }}
@@ -175,6 +180,11 @@ jobs:
 
           if [[ -z "$PR_NUMBER" ]]; then
             echo "::error::PR_NUMBER environment variable is not set"
+            validation_failed=true
+          fi
+
+          if [[ -z "$PR_TITLE" ]]; then
+            echo "::error::PR_TITLE environment variable is not set"
             validation_failed=true
           fi
 

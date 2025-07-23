@@ -7,8 +7,6 @@ import os
 import re
 import sys
 import urllib
-import requests
-import time
 
 from jira_util import connect_jira, get_tickets
 
@@ -64,40 +62,6 @@ def format_release_with_version(release_name, version):
     return release_name
 
 
-def get_github_pr_subject_line(repo, pr_number, token):
-    """
-    Fetch PR subject line
-    """
-    url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}"
-    headers = {
-        "Accept": "application/vnd.github.v3+json",
-        "Authorization": f"Bearer {token}"
-    }
-
-    try:
-        response = requests.get(url, headers=headers, timeout=30)
-        if response.status_code == 429:  # Rate limited
-            retry_after = int(response.headers.get('Retry-After', 60))
-            print(f"Rate limited, waiting {retry_after} seconds")
-            time.sleep(retry_after)
-            response = requests.get(url, headers=headers, timeout=30)
-
-        if response.status_code != 200:
-            print(f"::error::Failed to fetch PR information (status: {response.status_code})")
-            response.raise_for_status()
-
-        pr_data = response.json()
-        title = pr_data.get("title", "")
-
-        # Limit title length to prevent abuse
-        if len(title) > 100:
-            title = title[:100] + "..."
-
-        return title
-    except requests.exceptions.RequestException as e:
-        print(f"::error::Network error fetching PR information")
-        raise RuntimeError("Failed to fetch PR information") from e
-
 
 def setup_environment():
     """
@@ -125,9 +89,21 @@ def setup_environment():
         try:
             PROJECT = REPO.split("/")[1]
             BRANCH = BASE_BRANCH
-            COMMIT_MSG = get_github_pr_subject_line(REPO, PR_NUMBER, GH_TOKEN)
+
+            # Get PR title from environment variable (passed from workflow)
+            PR_TITLE = os.getenv("PR_TITLE")
+            if not PR_TITLE:
+                print(f"::error::PR_TITLE environment variable is required but not provided")
+                sys.exit(1)
+
+            # Limit title length to prevent abuse (same as original API call logic)
+            if len(PR_TITLE) > 100:
+                COMMIT_MSG = PR_TITLE[:100] + "..."
+            else:
+                COMMIT_MSG = PR_TITLE
+
         except Exception as e:
-            print(f"::error::Failed to fetch GitHub PR information")
+            print(f"::error::Failed to process GitHub PR information: {e}")
             sys.exit(1)
     else:
         print("Error: Required environment variables not set")
@@ -137,7 +113,7 @@ def setup_environment():
         print("  GERRIT_PROJECT, GERRIT_BRANCH, GERRIT_CHANGE_COMMIT_MESSAGE")
         print("  GERRIT_CHANGE_URL, GERRIT_PATCHSET_NUMBER, GERRIT_EVENT_TYPE")
         print("\nRunning with GitHub Actions requires:")
-        print("  GITHUB_BASE_REF, GITHUB_REPOSITORY, PR_NUMBER, GITHUB_TOKEN")
+        print("  GITHUB_BASE_REF, GITHUB_REPOSITORY, PR_NUMBER, PR_TITLE, GITHUB_TOKEN")
         print("  JIRA_URL, JIRA_USERNAME, JIRA_API_TOKEN")
         print("\nSee documentation for more details.")
         sys.exit(1)

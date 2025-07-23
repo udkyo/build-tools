@@ -46,6 +46,7 @@ When running in GitHub Actions, the script uses these environment variables:
 - `GITHUB_REPOSITORY` - The repository name (e.g. "owner/repo")
 - `GITHUB_TOKEN` - GitHub token with read access to repository
 - `PR_NUMBER` - The PR number to check
+- `PR_TITLE` - The PR title (used for JIRA ticket extraction)
 
 **Must be configured as secrets:**
 - `JIRA_URL` - URL of the JIRA instance
@@ -75,6 +76,7 @@ jobs:
     uses: couchbase/build-tools/.github/workflows/restricted-branch-check.yml@main
     with:
       pr_number: ${{ github.event.pull_request.number }}
+      pr_title: ${{ github.event.pull_request.title }}
     secrets:
       JIRA_URL: ${{ secrets.JIRA_URL }}
       JIRA_USERNAME: ${{ secrets.JIRA_USERNAME }}
