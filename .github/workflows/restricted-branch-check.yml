@@ -3,10 +3,6 @@ name: Restricted Branch Check
 on:
   workflow_call:
     inputs:
-      head_repo:
-        description: 'PR head repo'
-        required: true
-        type: string
       pr_number:
         description: 'PR number'
         required: true
@@ -25,7 +21,7 @@ jobs:
     name: Check Branch Restrictions
     runs-on: ubuntu-latest
     env:
-      ALLOWED_ORGS: "udk-io couchbase couchbasedeps couchbaselabs"
+      ALLOWED_ORGS: "couchbase couchbasedeps couchbaselabs udk-io"
     permissions:
       contents: read
       pull-requests: read
@@ -34,22 +30,6 @@ jobs:
     steps:
       - name: Validate inputs
         run: |
-          # Validate head_repo length
-          REPO_INPUT="${{ inputs.head_repo }}"
-          if [[ ${#REPO_INPUT} -gt 100 ]]; then
-            echo "::error::Repository name too long (max 100 characters)"
-            exit 1
-          fi
-
-          # Validate repo name - org cannot contain dots/underscores, repo more restrictive
-          if [[ ! "$REPO_INPUT" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,38}[a-zA-Z0-9])?/[a-zA-Z0-9]([a-zA-Z0-9._-]{0,98}[a-zA-Z0-9])?$ ]]; then
-            echo "::error::Invalid repository format"
-            echo "Repository must be in format 'org/repo' with safe characters only"
-            echo "Organization: alphanumeric and hyphens only, 2-40 chars"
-            echo "Repository: alphanumeric, dots, underscores, hyphens only, 2-100 chars"
-            exit 1
-          fi
-
           # Validate PR number is numeric
           PR_INPUT="${{ inputs.pr_number }}"
           if [[ ! "$PR_INPUT" =~ ^[0-9]+$ ]]; then
@@ -96,7 +76,7 @@ jobs:
             exit 1
           fi
           echo "::notice::SECURITY_AUDIT: Target repository organization validation passed: $target_org"
-          echo "::notice::Repository validation: Protecting ${{ github.repository }} (source: ${{ inputs.head_repo }})"
+          echo "::notice::Repository validation: Protecting ${{ github.repository }}"
 
       - name: Validate environment setup
         env:
@@ -145,27 +125,6 @@ jobs:
 
           echo "::notice::Environment validation passed - all secrets are properly configured"
 
-      - name: Verify repository accessibility
-        env:
-          REPO_NAME: ${{ inputs.head_repo }}
-        run: |
-          echo "::notice::SECURITY_AUDIT: Verifying repository accessibility"
-
-          # Additional security validation for repository name
-          if [[ "$REPO_NAME" =~ [[:space:]] ]]; then
-            echo "::error::Repository name contains invalid whitespace characters"
-            exit 1
-          fi
-
-          # Verify repository exists and is accessible with timeout
-          echo "::debug::Attempting to verify repository access (with 30s timeout)"
-          if ! timeout 30s git ls-remote --exit-code --heads "https://github.com/${REPO_NAME}" > /dev/null 2>&1; then
-            echo "::error::Cannot access repository or repository does not exist"
-            echo "::notice::SECURITY_AUDIT: Repository access failed"
-            exit 1
-          fi
-          echo "::notice::SECURITY_AUDIT: Repository access verified successfully"
-
       - name: Checkout build-tools repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -198,7 +157,7 @@ jobs:
           JIRA_USERNAME: ${{ secrets.JIRA_USERNAME }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
         run: |
-          echo "::notice::RESTRICTION_CHECK: Starting restriction check for target=${{ github.repository }} pr=${{ inputs.pr_number }} base_ref=${{ github.base_ref }} (source: ${{ inputs.head_repo }})"
+          echo "::notice::RESTRICTION_CHECK: Starting restriction check for target=${{ github.repository }} pr=${{ inputs.pr_number }} base_ref=${{ github.base_ref }}"
 
           # Secure validation of environment variables without exposing sensitive values
           validation_failed=false
