@@ -192,7 +192,7 @@ def get_approved_tickets(approval_ticket, jira):
         subtasks = [subtask.key for subtask in jira_ticket.fields.subtasks]
         return depends + relates + subtasks + [approval_ticket]
     except Exception as e:
-        # The centralized authentication error handling in connect_jira handles auth issues
+        # Error handling in connect_jira handles auth issues
         if "404" in str(e) or "does not exist" in str(e):
             raise Exception(f"JIRA approval ticket '{approval_ticket}' not found. Please verify the ticket ID is correct.")
         else:
@@ -354,11 +354,12 @@ def failed_output_github(exc_message):
     # Check if this is a JIRA-related error and provide more specific guidance
     if "JIRA authentication failed" in safe_message:
         print(f"::error::JIRA Authentication Error: {safe_message}")
-        print(f"❌ JIRA authentication failed. This is likely due to:")
+        print(f"❌ JIRA authentication failed - PR check cannot continue")
+        print(f"This is likely due to:")
         print(f"   • Expired API token - please rotate your JIRA_API_TOKEN secret")
         print(f"   • Incorrect username or token - verify JIRA_USERNAME and JIRA_API_TOKEN")
         print(f"   • Network connectivity issues to JIRA server")
-        print(f"   Contact the Build Team if you need assistance with JIRA credentials.")
+        print(f"Contact the Build Team to resolve this issue with JIRA credentials.")
 
         # Output error type for GitHub Actions summary
         github_output_file = os.environ.get("GITHUB_OUTPUT")
@@ -372,11 +373,12 @@ def failed_output_github(exc_message):
 
     elif "JIRA connection failed" in safe_message:
         print(f"::error::JIRA Connection Error: {safe_message}")
-        print(f"❌ Unable to connect to JIRA. This could be due to:")
+        print(f"❌ Unable to connect to JIRA - PR check cannot continue")
+        print(f"This could be due to:")
         print(f"   • Invalid JIRA URL - verify JIRA_URL is correct")
         print(f"   • Network connectivity issues")
         print(f"   • JIRA server temporarily unavailable")
-        print(f"   Contact the Build Team if the issue persists.")
+        print(f"Contact the Build Team to resolve this issue.")
 
         # Output error type for GitHub Actions summary
         github_output_file = os.environ.get("GITHUB_OUTPUT")
