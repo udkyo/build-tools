@@ -25,7 +25,7 @@ jobs:
     name: Check Branch Restrictions
     runs-on: ubuntu-latest
     env:
-      ALLOWED_ORGS: "couchbase couchbasedeps couchbaselabs udk-io"
+      ALLOWED_ORGS: "couchbase couchbasedeps couchbaselabs"
     permissions:
       contents: read
       pull-requests: read
@@ -216,13 +216,17 @@ jobs:
 
           echo "::notice::All required environment variables are properly configured"
 
+          # Run restriction check and capture exit code
           (cd build-tools/restriction && uv run restricted-branch-check && (echo "status=success" >> $GITHUB_OUTPUT)) || {
+            RESTRICTION_STATUS=$?
             echo "status=failure" >> $GITHUB_OUTPUT
-            # Check if this is a JIRA auth error based on error_type output
-            if [[ "${{ steps.branch-check.outputs.error_type }}" == "jira_auth" || "${{ steps.branch-check.outputs.error_type }}" == "jira_connection" ]]; then
-              echo "::notice::JIRA_AUTH_ERROR: JIRA authentication issue for target=${{ github.repository }} pr=${{ inputs.pr_number }}"
+
+            # Exit code 5 = legitimate restriction (from output_report)
+            # Exit code 6 = technical error including auth failures (from failed_output)
+            if [ $RESTRICTION_STATUS -eq 6 ]; then
+              echo "::notice::JIRA_CONNECTION_ISSUE: Authentication or connection error for target=${{ github.repository }} pr=${{ inputs.pr_number }}"
             else
-              echo "::notice::RESTRICTION_ENFORCEMENT: PR blocked due to restriction policy for target=${{ github.repository }} pr=${{ inputs.pr_number }}"
+              echo "::notice::RESTRICTION_POLICY: Branch restrictions apply to target=${{ github.repository }} pr=${{ inputs.pr_number }}"
             fi
             exit 1
           }
