@@ -272,9 +272,48 @@ jobs:
                 echo "- Contact the Build Team if you need assistance" >> $GITHUB_STEP_SUMMARY
               fi
             else
-              echo "This PR cannot be merged until all the restricted branch requirements are met or the workflow is fixed." >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "Check the workflow logs for more details." >> $GITHUB_STEP_SUMMARY
+              # Check for specific error types and provide targeted guidance
+              if [[ "${{ steps.branch-check.outputs.error_type }}" == "jira_auth" ]]; then
+                echo "**🔐 JIRA Authentication Error**" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "The restriction check failed due to JIRA authentication issues." >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "**Common causes:**" >> $GITHUB_STEP_SUMMARY
+                echo "- Expired JIRA API token" >> $GITHUB_STEP_SUMMARY
+                echo "- Incorrect JIRA username or token" >> $GITHUB_STEP_SUMMARY
+                echo "- Network connectivity issues to JIRA server" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "**Next steps:**" >> $GITHUB_STEP_SUMMARY
+                echo "- Contact the Build Team to rotate the JIRA credentials" >> $GITHUB_STEP_SUMMARY
+                echo "- Verify JIRA_URL, JIRA_USERNAME, and JIRA_API_TOKEN secrets are correct" >> $GITHUB_STEP_SUMMARY
+              elif [[ "${{ steps.branch-check.outputs.error_type }}" == "jira_connection" ]]; then
+                echo "**🌐 JIRA Connection Error**" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "The restriction check failed due to JIRA connectivity issues." >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "**Common causes:**" >> $GITHUB_STEP_SUMMARY
+                echo "- Invalid JIRA URL configuration" >> $GITHUB_STEP_SUMMARY
+                echo "- Network connectivity issues" >> $GITHUB_STEP_SUMMARY
+                echo "- JIRA server temporarily unavailable" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "**Next steps:**" >> $GITHUB_STEP_SUMMARY
+                echo "- Verify the JIRA_URL secret is correct" >> $GITHUB_STEP_SUMMARY
+                echo "- Contact the Build Team if the issue persists" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "**❓ Unexpected Error in Restriction Check**" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "The restriction check encountered an unexpected error." >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "**Troubleshooting:**" >> $GITHUB_STEP_SUMMARY
+                echo "- Check the workflow logs for specific error details" >> $GITHUB_STEP_SUMMARY
+                echo "- This could be due to an issue in the restriction checker script" >> $GITHUB_STEP_SUMMARY
+                echo "- Contact the Build Team for assistance with this error" >> $GITHUB_STEP_SUMMARY
+              fi
+
+              if [[ -n "${{ steps.branch-check.outputs.error_message }}" ]]; then
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "**Error details:** ${{ steps.branch-check.outputs.error_message }}" >> $GITHUB_STEP_SUMMARY
+              fi
             fi
           else
             echo "## ✅ Restricted Branch Check Passed" >> $GITHUB_STEP_SUMMARY
