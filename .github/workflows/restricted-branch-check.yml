@@ -40,8 +40,8 @@ jobs:
           # Function to sanitize strings used in shell commands
           sanitize_input() {
             local input="$1"
-            # Replace or escape characters that could lead to command injection
-            echo "$input" | sed 's/[`$();&|<>]//g' | tr -d '\r\n'
+            # Replace or escape characters that could lead to command injection, but preserve quotes
+            echo "$input" | sed 's/[`$()&|<>]//g' | tr -d '\r\n'
           }
 
           # Sanitize the PR title for shell safety
@@ -51,7 +51,7 @@ jobs:
       # Step 2: Validate inputs
       - name: Validate inputs
         id: validate-inputs
-        uses: udkyo/build-tools/.github/actions/restricted-branch-check/01-validate-inputs@gha-restriction-checker
+        uses: udkyo/build-tools/.github/actions/restricted-branch-check/01-validate-inputs@main
         with:
           pr_number: ${{ inputs.pr_number }}
           pr_title: ${{ steps.sanitize-inputs.outputs.pr_title_safe }}
@@ -60,7 +60,7 @@ jobs:
       # Step 3: Validate repository organization
       - name: Validate organization
         id: validate-org
-        uses: udkyo/build-tools/.github/actions/restricted-branch-check/02-validate-organization@gha-restriction-checker
+        uses: udkyo/build-tools/.github/actions/restricted-branch-check/02-validate-organization@main
         with:
           repository: ${{ github.repository }}
 
@@ -68,7 +68,7 @@ jobs:
       - name: Setup environment
         id: setup-env
         if: steps.validate-inputs.outputs.status == 'valid' && steps.validate-org.outputs.status == 'org_validated'
-        uses: udkyo/build-tools/.github/actions/restricted-branch-check/03-setup-environment@gha-restriction-checker
+        uses: udkyo/build-tools/.github/actions/restricted-branch-check/03-setup-environment@main
         with:
           jira_url: ${{ secrets.JIRA_URL }}
           jira_username: ${{ secrets.JIRA_USERNAME }}
@@ -113,7 +113,7 @@ jobs:
       - name: Run restriction check
         id: run-check
         if: steps.validate-inputs.outputs.status == 'valid' && steps.validate-org.outputs.status == 'org_validated' && steps.setup-env.outputs.status == 'success' && steps.validate-paths.outputs.status == 'paths_validated'
-        uses: udkyo/build-tools/.github/actions/restricted-branch-check/04-run-restriction-check@gha-restriction-checker
+        uses: udkyo/build-tools/.github/actions/restricted-branch-check/04-run-restriction-check@main
         with:
           base_ref: ${{ github.base_ref }}
           repository: ${{ github.repository }}
@@ -215,7 +215,7 @@ jobs:
       - name: Generate summary
         if: always()
         id: generate-summary
-        uses: udkyo/build-tools/.github/actions/restricted-branch-check/05-generate-summary@gha-restriction-checker
+        uses: udkyo/build-tools/.github/actions/restricted-branch-check/05-generate-summary@main
         with:
           # Status input
           status: ${{ steps.run-check.outputs.status || 'error' }}
@@ -244,25 +244,32 @@ jobs:
           if [[ "${{ steps.validate-inputs.outputs.status }}" != "valid" ]]; then
             echo "status=failure" >> $GITHUB_OUTPUT
             echo "::error::Input validation failed"
+            exit 1
           elif [[ "${{ steps.validate-org.outputs.status }}" != "org_validated" ]]; then
             echo "status=failure" >> $GITHUB_OUTPUT
             echo "::error::Organization validation failed"
+            exit 1
           elif [[ "${{ steps.validate-paths.outputs.status }}" != "paths_validated" ]]; then
             echo "status=failure" >> $GITHUB_OUTPUT
             echo "::error::Path validation failed"
+            exit 1
           elif [[ "${{ steps.setup-env.outputs.status }}" != "success" ]]; then
             echo "status=failure" >> $GITHUB_OUTPUT
             echo "::error::Environment setup failed"
+            exit 1
           elif [[ "${{ steps.run-check.outputs.status }}" == "restriction" ]]; then
             echo "status=failure" >> $GITHUB_OUTPUT
             echo "::error::Branch restriction applies"
+            exit 1
           elif [[ "${{ steps.run-check.outputs.status }}" == "error" ]]; then
             echo "status=failure" >> $GITHUB_OUTPUT
             echo "::error::Technical error occurred"
+            exit 1
           elif [[ "${{ steps.run-check.outputs.status }}" == "success" ]]; then
             echo "status=success" >> $GITHUB_OUTPUT
             echo "::notice::Branch check passed successfully"
           else
             echo "status=failure" >> $GITHUB_OUTPUT
             echo "::error::Unexpected workflow status"
+            exit 1
           fi
