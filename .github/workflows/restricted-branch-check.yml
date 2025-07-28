@@ -144,6 +144,11 @@ jobs:
                 message=$(echo "$message" | sed "s/${{ secrets.JIRA_USERNAME }}/[REDACTED_USERNAME]/g")
               fi
 
+              # Replace URL connection error messages with a generic message
+              if [[ "$message" == *"Unable to connect to"* || "$message" == *"connection failed"* ]]; then
+                message="JIRA connection failed. Please verify the JIRA URL and network connectivity."
+              fi
+
               # Redact Basic Auth headers (commonly found in error responses)
               message=$(echo "$message" | sed -E 's/Authorization: Basic [A-Za-z0-9+\/=]*/Authorization: Basic [REDACTED]/g')
               message=$(echo "$message" | sed -E 's/Authorization: Bearer [A-Za-z0-9_\.\-]*/Authorization: Bearer [REDACTED]/g')
