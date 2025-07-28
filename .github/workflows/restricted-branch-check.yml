@@ -264,11 +264,39 @@ jobs:
             exit 1
           elif [[ "${{ steps.run-check.outputs.status }}" == "restriction" ]]; then
             echo "status=failure" >> $GITHUB_OUTPUT
-            echo "::error::Branch restriction applies"
+            # Error message with summary
+            if [[ -n "${{ steps.run-check.outputs.restriction_type }}" && "${{ steps.run-check.outputs.restriction_type }}" == "missing_ticket" ]]; then
+              echo "::error::Branch restriction applies: Missing JIRA ticket reference in PR title"
+            elif [[ -n "${{ steps.run-check.outputs.restriction_type }}" && "${{ steps.run-check.outputs.restriction_type }}" == "unapproved_ticket" ]]; then
+              echo "::error::Branch restriction applies: Ticket not approved for this release"
+              if [[ -n "${{ steps.run-check.outputs.restriction_approval_ticket }}" ]]; then
+                echo "::error::Required approval ticket: ${{ steps.run-check.outputs.restriction_approval_ticket }}"
+              fi
+            else
+              echo "::error::Branch restriction applies: ${{ steps.run-check.outputs.restriction_reason || 'Check summary for details' }}"
+            fi
             exit 1
           elif [[ "${{ steps.run-check.outputs.status }}" == "error" ]]; then
             echo "status=failure" >> $GITHUB_OUTPUT
-            echo "::error::Technical error occurred"
+            # Error message with summary
+            if [[ -n "${{ steps.prepare-errors.outputs.error_type }}" ]]; then
+              case "${{ steps.prepare-errors.outputs.error_type }}" in
+                "jira_auth")
+                  echo "::error::Technical error occurred: JIRA authentication failed"
+                  ;;
+                "jira_connection")
+                  echo "::error::Technical error occurred: JIRA connection failed"
+                  ;;
+                "network_connection_failure")
+                  echo "::error::Technical error occurred: Network connectivity issue"
+                  ;;
+                *)
+                  echo "::error::Technical error occurred: ${{ steps.prepare-errors.outputs.error_type }}"
+                  ;;
+              esac
+            else
+              echo "::error::Technical error occurred"
+            fi
             exit 1
           elif [[ "${{ steps.run-check.outputs.status }}" == "success" ]]; then
             echo "status=success" >> $GITHUB_OUTPUT
