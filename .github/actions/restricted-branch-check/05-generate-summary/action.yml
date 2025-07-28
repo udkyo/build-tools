@@ -121,7 +121,7 @@ runs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Next steps:**" >> $GITHUB_STEP_SUMMARY
             echo "- Contact the Build Team to rotate the JIRA credentials" >> $GITHUB_STEP_SUMMARY
-            echo "- Verify JIRA_URL, JIRA_USERNAME, and JIRA_API_TOKEN secrets are correct" >> $GITHUB_STEP_SUMMARY
+            echo "- Verify your JIRA credentials are correctly configured" >> $GITHUB_STEP_SUMMARY
 
           elif [[ "${{ inputs.error_type }}" == "jira_connection" ]]; then
             # JIRA connection failed
@@ -135,7 +135,7 @@ runs:
             echo "- JIRA server temporarily unavailable" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Next steps:**" >> $GITHUB_STEP_SUMMARY
-            echo "- Verify the JIRA_URL secret is correct" >> $GITHUB_STEP_SUMMARY
+            echo "- Verify your JIRA connection settings are correct" >> $GITHUB_STEP_SUMMARY
             echo "- Contact the Build Team if the issue persists" >> $GITHUB_STEP_SUMMARY
 
           elif [[ "${{ inputs.error_type }}" == "org_not_allowed" ]]; then
