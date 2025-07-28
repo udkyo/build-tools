@@ -146,7 +146,7 @@ jobs:
 
               # Replace URL connection error messages with a generic message
               if [[ "$message" == *"Unable to connect to"* || "$message" == *"connection failed"* ]]; then
-                message="JIRA connection failed. Please verify the JIRA URL and network connectivity."
+                message="JIRA connection failed. Please verify your JIRA credentials and network connectivity."
               fi
 
               # Redact Basic Auth headers (commonly found in error responses)

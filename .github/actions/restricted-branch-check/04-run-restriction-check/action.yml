@@ -94,7 +94,7 @@ runs:
 
         # Validate the build_tools_path for path traversal prevention
         BUILD_TOOLS_PATH="${{ inputs.build_tools_path }}"
-        
+
         # Security check for path traversal
         if [[ "$BUILD_TOOLS_PATH" == *".."* || "$BUILD_TOOLS_PATH" != "build-tools"* ]]; then
           echo "::error::Invalid build tools path: possible path traversal attempt"
@@ -103,7 +103,7 @@ runs:
           echo "error_message=Path validation failed: Security violation detected" >> $GITHUB_OUTPUT
           exit 1
         fi
-        
+
         # Validate that restricted_branch_check.py exists in the expected location
         if [ ! -f "$BUILD_TOOLS_PATH/restriction/restricted_branch_check.py" ]; then
           echo "::error::Cannot find restricted_branch_check.py in the expected location"
@@ -124,42 +124,45 @@ runs:
           value=$(grep -m 1 "^$pattern=" "$GITHUB_OUTPUT" 2>/dev/null | cut -d= -f2- || echo "")
           echo "$value"
         }
-        
+
         # Function to sanitize error messages
         sanitize_error_message() {
           local message="$1"
-          
+
           # Remove actual credentials if they appear in error messages
           if [[ -n "$message" ]]; then
             # Redact JIRA API token if it appears in error message
             if [[ -n "${{ inputs.jira_api_token }}" ]]; then
               message=$(echo "$message" | sed "s/${{ inputs.jira_api_token }}/[REDACTED_API_TOKEN]/g")
             fi
-            
+
             # Redact JIRA username if it appears in error message
             if [[ -n "${{ inputs.jira_username }}" ]]; then
               message=$(echo "$message" | sed "s/${{ inputs.jira_username }}/[REDACTED_USERNAME]/g")
             fi
-            
-            # No URL redaction as requested - URL is visible in status messages anyway
-            
+
+            # Replace URL connection error messages with a generic message
+            if [[ "$message" == *"Unable to connect to"* || "$message" == *"connection failed"* ]]; then
+              message="JIRA connection failed. Please verify your JIRA credentials and network connectivity."
+            fi
+
             # Redact Basic Auth headers (commonly found in error responses)
             message=$(echo "$message" | sed -E 's/Authorization: Basic [A-Za-z0-9+\/=]*/Authorization: Basic [REDACTED]/g')
             message=$(echo "$message" | sed -E 's/Authorization: Bearer [A-Za-z0-9_\.\-]*/Authorization: Bearer [REDACTED]/g')
-            
+
             # Redact any base64-encoded credential strings (common in basic auth)
             # Look for typical base64 patterns that might be credentials (30-100 chars)
             message=$(echo "$message" | sed -E 's/([A-Za-z0-9+\/=]{30,100})/[POSSIBLE_ENCODED_CREDENTIALS]/g')
-            
-            # Remove potentially dangerous content
-            message=$(echo "$message" | sed 's/[`$();&|<>]//g' | tr -d '\r\n')
-            
+
+            # Remove potentially dangerous content but preserve quotes for readability
+            message=$(echo "$message" | sed 's/[`$()&|<>]//g' | tr -d '\r\n')
+
             # Limit length for security
             if [[ ${#message} -gt 200 ]]; then
               message="${message:0:197}..."
             fi
           fi
-          
+
           echo "$message"
         }
 
@@ -186,11 +189,11 @@ runs:
           # Exit code 5 is for legitimate restrictions (from output_report)
           echo "status=restriction" >> $GITHUB_OUTPUT
           echo "::notice::RESTRICTION_POLICY: Branch restrictions apply to target=${{ inputs.repository }} pr=${{ inputs.pr_number }}"
-          
+
         elif [ $CHECK_STATUS -eq 6 ]; then
           # Exit code 6 is for technical errors (from failed_output)
           echo "status=error" >> $GITHUB_OUTPUT
-          
+
           # Set error type if present in GITHUB_OUTPUT, otherwise default to general
           ERROR_TYPE=$(safe_get_output "error_type")
           if [[ "$ERROR_TYPE" == "jira_auth" || "$ERROR_TYPE" == "jira_connection" ]]; then
@@ -217,7 +220,7 @@ runs:
             SAFE_ERROR_MESSAGE=$(sanitize_error_message "$ERROR_MESSAGE")
             echo "error_message=$SAFE_ERROR_MESSAGE" >> $GITHUB_OUTPUT
           fi
-           
+
         else
           # Unknown exit code
           echo "status=error" >> $GITHUB_OUTPUT
