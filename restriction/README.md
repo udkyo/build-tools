@@ -53,6 +53,24 @@ When running in GitHub Actions, the script uses these environment variables:
 - `JIRA_USERNAME` - JIRA username
 - `JIRA_API_TOKEN` - JIRA API token
 
+## Exit Codes
+
+The script uses different exit codes to communicate status to the calling workflow:
+- `0` - Check passed, no restrictions apply
+- `5` - Legitimate branch restriction applies (PR blocked)
+- `6` - Technical error occurred (e.g., JIRA authentication, network issues)
+
+The script also writes detailed error information to `$GITHUB_OUTPUT` for consumption by the workflow.
+
+## Error Handling
+
+The script provides detailed error information for various failure scenarios:
+
+- **JIRA Authentication Issues**: Detailed errors for expired tokens, invalid credentials, etc.
+- **JIRA Connection Issues**: Problems with JIRA URL, network connectivity, etc.
+- **Missing Tickets**: When PR title doesn't reference any JIRA tickets
+- **Unapproved Tickets**: When tickets aren't linked to the appropriate release approval ticket
+
 ## Setting Up the Workflow
 
 To enable restriction checking on a repository:

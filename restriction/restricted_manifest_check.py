@@ -6,10 +6,10 @@ import argparse
 import pprint
 from subprocess import check_call, check_output
 
-from importmonkey import add_path
 script_dir = os.path.dirname(os.path.abspath(__file__))
 build_from_manifest_path = os.path.abspath(os.path.join(script_dir, "..", "build-from-manifest"))
-add_path(build_from_manifest_path)
+if build_from_manifest_path not in sys.path:
+    sys.path.insert(0, build_from_manifest_path)
 from manifest_util import get_manifest_dir, scan_manifests
 
 """
@@ -38,7 +38,7 @@ def main():
   files = check_output([
     "git", "diff-tree", "--no-commit-id", "--name-only", "-r", "FETCH_HEAD"])
   failed = False
-  for manifest in files.splitlines():
+  for manifest in files.decode('utf-8').splitlines():
     if (manifest in manifests and
         "restricted" in manifests[manifest] and
          manifests[manifest]["restricted"]):
