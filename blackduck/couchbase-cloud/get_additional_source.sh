@@ -40,7 +40,7 @@ do
     # npm.pkg.github.com. Passed per-command with xtrace off so it neither
     # hits the build log nor run_script's .env dump.
     set +x
-    GITHUB_TOKEN=$(cat ~/.ssh/blackduck-github-token) npm install
+    GITHUB_TOKEN=$(cat ~/.ssh/blackduck-cloud-package-read) npm install
     set -x
     popd
 done
